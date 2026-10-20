@@ -1,0 +1,9 @@
+<div class="chips wide">
+  <% current_user.pots.each do |pot| %>
+    <% next if defined?(except) && except == pot.kind %>
+    <label class="chip <%= pot_class(pot) %>">
+      <input type="radio" name="<%= name %>" value="<%= pot.id %>" <%= 'checked' if selected.to_s == pot.id.to_s %>>
+      <span><span class="between" style="gap: 7px"><span class="dot"></span><%= pot.name %></span><small><%= Money.format(plan.pot_balance(pot), short: true) %></small></span>
+    </label>
+  <% end %>
+</div>

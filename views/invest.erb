@@ -1,0 +1,57 @@
+<%== erb :_emergency, layout: false, locals: { emergency: emergency } %>
+
+<% invested = active.sum(&:principal) %>
+<% worth = active.sum(&:value) %>
+<div class="figures" style="margin-bottom: 12px">
+  <div><span>Put in</span><strong><%= Money.format(invested, short: true) %></strong></div>
+  <div><span>Worth now</span><strong><%= Money.format(worth, short: true) %></strong></div>
+  <div><span>Gain</span><strong class="<%= worth >= invested ? 'pos' : 'neg' %>"><%= signed(worth - invested, short: true).sub('GH₵ ', '') %></strong></div>
+</div>
+
+<div class="buttons" style="margin-bottom: 4px">
+  <a class="btn" href="/invest/new"><%== icon(:plus, size: 18) %>Add investment</a>
+  <a class="btn ghost" href="/learn"><%== icon(:book_open, size: 18) %>What to invest in</a>
+</div>
+
+<h2 class="section">Holding</h2>
+<% if active.empty? %>
+  <div class="card empty">Nothing yet. Add a T-bill, fund or shares you buy, or ones you already hold.</div>
+<% else %>
+  <div class="card tight rows">
+    <% active.each do |investment| %>
+      <a class="row" href="/invest/<%= investment.id %>">
+        <span class="badge sm c-future"><%== icon(:trending_up, size: 16) %></span>
+        <div class="grow">
+          <div class="title"><%= investment.name %></div>
+          <div class="sub">
+            <%= [investment.provider, investment.rate && "#{investment.rate.to_s('F')}%"].compact.join(' · ').then { |s| s.empty? ? investment.kind_label : s } %>
+            <% if investment.matures_on %>
+              · <%= investment.matures_on > today ? 'matures' : 'matured' %> <%= days_from_now(investment.matures_on) %>
+            <% end %>
+          </div>
+        </div>
+        <div class="num">
+          <%= cedis(investment.value, short: true) %>
+          <% if investment.matures_on && investment.matures_on <= today %><small><span class="pill warn">Due</span></small>
+          <% elsif investment.emergency %><small>emergency</small><% end %>
+        </div>
+      </a>
+    <% end %>
+  </div>
+<% end %>
+
+<% if closed.any? %>
+  <h2 class="section">Closed</h2>
+  <div class="card tight rows">
+    <% closed.each do |investment| %>
+      <a class="row" href="/invest/<%= investment.id %>">
+        <span class="badge sm c-muted"><%== icon(:check, size: 16) %></span>
+        <div class="grow">
+          <div class="title"><%= investment.name %></div>
+          <div class="sub">Closed <%= short_date(investment.closed_on) %></div>
+        </div>
+        <div class="num <%= investment.gain.negative? ? 'neg' : 'pos' %>"><%= signed(investment.gain, short: true) %><small>gain</small></div>
+      </a>
+    <% end %>
+  </div>
+<% end %>

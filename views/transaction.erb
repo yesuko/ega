@@ -1,0 +1,41 @@
+<% amount, tone = txn_amount(txn) %>
+<div class="card center">
+  <span class="badge" style="margin-bottom: 8px"><%== icon(txn.icon) %></span>
+  <div style="font-size: 30px; font-weight: 750" class="<%= tone %>"><%= amount %></div>
+  <div class="title" style="font-weight: 600; margin-top: 2px"><%= txn_title(txn) %></div>
+  <div class="muted small"><%= long_date(txn.occurred_on) %></div>
+  <% if txn.note && txn.note != txn_title(txn) %><p class="small" style="margin: 10px 0 0"><%= txn.note %></p><% end %>
+</div>
+
+<h2 class="section">What changed</h2>
+<div class="card tight rows">
+  <% txn.entries.each do |entry| %>
+    <div class="row <%= pot_class(entry.pot) %>">
+      <span class="dot"></span>
+      <div class="grow">
+        <div class="title"><%= entry.pot.name %></div>
+        <div class="sub"><%= entry.account.name %><%= ' · fee' if entry.flow == 'fee' %></div>
+      </div>
+      <div class="num <%= entry.amount.negative? ? 'neg' : 'pos' %>"><%= signed(entry.amount) %></div>
+    </div>
+  <% end %>
+</div>
+
+<% if txn.external_ref %><p class="hint" style="margin: 0 4px 12px">From an SMS, transaction ID <%= txn.external_ref %>.</p><% end %>
+
+<% if deletable?(txn) %>
+  <form method="post" action="/transactions/<%= txn.id %>/delete" data-confirm="Delete this? Balances go back to how they were before it.">
+    <button class="btn block danger" type="submit"><%== icon(:trash, size: 18) %>Delete</button>
+  </form>
+  <p class="hint center">
+    <% if txn.buy_item_id %>
+      <%= txn.buy_item&.name %> goes back on your Buy List.
+    <% elsif txn.investment_event? && txn.snapshot.nil? %>
+      This removes <%= txn.investment&.name %> too.
+    <% else %>
+      To change it, delete it and record it again.
+    <% end %>
+  </p>
+<% else %>
+  <p class="hint center">Later changes to <%= txn.investment&.name %> come first. Undo those on its page, newest first.</p>
+<% end %>

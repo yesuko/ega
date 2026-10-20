@@ -1,0 +1,67 @@
+<form method="post" action="<%= investment ? "/invest/#{investment.id}" : '/invest' %>" data-invest>
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <div class="field">
+    <label class="label" for="kind">Type</label>
+    <select id="kind" name="kind">
+      <% Investment::KINDS.each do |key, label| %>
+        <option value="<%= key %>" <%= 'selected' if form['kind'] == key %>><%= label %></option>
+      <% end %>
+    </select>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="name">Name</label>
+      <input type="text" id="name" name="name" value="<%= form['name'] %>" maxlength="60" placeholder="e.g. 91-day T-bill">
+    </div>
+    <div class="field">
+      <label class="label" for="provider">With</label>
+      <input type="text" id="provider" name="provider" value="<%= form['provider'] %>" maxlength="60" placeholder="Bank, broker or fund">
+    </div>
+  </div>
+
+  <% unless investment %>
+    <div class="card">
+      <label class="label center" for="amount">Amount invested</label>
+      <label class="amount" style="padding-top: 6px"><span>GH₵</span><input id="amount" name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="<%= form['amount'] %>"></label>
+    </div>
+    <div class="field">
+      <span class="label">Paid from (Future Me's money)</span>
+      <div class="chips">
+        <% current_user.cash_accounts.each do |account| %>
+          <label class="chip"><input type="radio" name="from_id" value="<%= account.id %>" <%= 'checked' if form['from_id'].to_s == account.id.to_s %>><span><%== icon(account.icon, size: 16) %><%= account.name %> <small><%= Money.format(plan.balance_at(current_user.pot('future'), account), short: true) %></small></span></label>
+        <% end %>
+        <label class="chip"><input type="radio" name="from_id" value="held" <%= 'checked' if form['from_id'] == 'held' %>><span>I already had it</span></label>
+      </div>
+      <p class="hint">"I already had it" is for investments made before you started using the app.</p>
+    </div>
+  <% end %>
+
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="started_on">Start date</label>
+      <input type="date" id="started_on" name="started_on" value="<%= form['started_on'] %>" max="<%= today.iso8601 %>">
+    </div>
+    <div class="field">
+      <label class="label" for="matures_on">Matures on</label>
+      <input type="date" id="matures_on" name="matures_on" value="<%= form['matures_on'] %>">
+    </div>
+  </div>
+  <div class="chips" style="margin: -8px 0 18px" data-tenors>
+    <% [91, 182, 364].each do |days| %>
+      <button type="button" class="chip" data-tenor="<%= days %>"><span><%= days %> days</span></button>
+    <% end %>
+  </div>
+  <div class="field">
+    <label class="label" for="rate">Yearly rate (%)</label>
+    <input type="text" id="rate" name="rate" value="<%= form['rate'] %>" inputmode="decimal" autocomplete="off" placeholder="If you know it, e.g. 18.5">
+  </div>
+  <label class="check field">
+    <input type="checkbox" name="emergency" value="1" <%= 'checked' if form['emergency'] == '1' %>>
+    <span>Counts towards my emergency fund <span class="hint" style="display: block; margin-top: 2px">Tick it for money you can withdraw within days, like a money market fund.</span></span>
+  </label>
+  <div class="field">
+    <label class="label" for="note">Note</label>
+    <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="200" placeholder="Optional">
+  </div>
+  <button class="btn block" type="submit"><%= investment ? 'Save' : 'Add investment' %></button>
+</form>

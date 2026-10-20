@@ -1,0 +1,37 @@
+<form method="post" action="/spend">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <div class="card">
+    <label class="amount"><span>GH₵</span><input name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="<%= form['amount'] %>" aria-label="Amount spent" autofocus></label>
+    <p class="center small muted" style="margin: 0 0 6px">
+      <% if safe[:left].negative? %>
+        You're <%= cedis(-safe[:left]) %> over today's Enjoy share.
+      <% else %>
+        Safe to spend from Enjoy today: <strong><%= cedis(safe[:left]) %></strong>
+      <% end %>
+    </p>
+  </div>
+
+  <div class="field">
+    <span class="label">From pot</span>
+    <%== erb :_pot_chips, layout: false, locals: { name: 'pot_id', selected: form['pot_id'] } %>
+  </div>
+
+  <div class="field">
+    <span class="label">Paid from</span>
+    <%== erb :_account_chips, layout: false, locals: { name: 'account_id', selected: form['account_id'] } %>
+  </div>
+
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="note">What for</label>
+      <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="120" placeholder="Optional">
+    </div>
+    <div class="field">
+      <label class="label" for="occurred_on">Date</label>
+      <input type="date" id="occurred_on" name="occurred_on" value="<%= form['occurred_on'] %>" max="<%= today.iso8601 %>">
+    </div>
+  </div>
+  <input type="hidden" name="external_ref" value="<%= form['external_ref'] %>">
+  <button class="btn block" type="submit">Save</button>
+  <p class="hint center">Don't log every Living cost if it's a chore. Check your MoMo balance now and then instead, and the gap is recorded for you.</p>
+</form>

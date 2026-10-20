@@ -1,0 +1,124 @@
+<% user = current_user %>
+
+<h2 class="section" id="pots">Pots and shares</h2>
+<form method="post" action="/settings/pots" class="card" data-percent-total>
+  <p class="small muted">Each income is split by these shares. They must add up to 100%. "Lives in" is where the pot's money should sit; money elsewhere shows up as a suggested move.</p>
+  <% user.pots.each do |pot| %>
+    <div class="item <%= pot_class(pot) %>">
+      <div class="label"><span class="dot"></span> <%= pot.about %></div>
+      <div class="row2">
+        <input type="text" name="pots[<%= pot.id %>][name]" value="<%= pot.name %>" maxlength="30" aria-label="Pot name" required>
+        <div class="between" style="gap: 8px">
+          <input type="number" name="pots[<%= pot.id %>][percent]" value="<%= pot.percent %>" min="0" max="100" step="1" aria-label="<%= pot.name %> share" data-percent>
+          <span class="muted">%</span>
+        </div>
+      </div>
+      <div class="field" style="margin: 10px 0 0">
+        <select name="pots[<%= pot.id %>][home_account_id]" aria-label="<%= pot.name %> lives in">
+          <option value="">Lives anywhere</option>
+          <% user.cash_accounts.each do |account| %>
+            <option value="<%= account.id %>" <%= 'selected' if pot.home_account_id == account.id %>>Lives in <%= account.name %></option>
+          <% end %>
+        </select>
+      </div>
+    </div>
+  <% end %>
+  <p class="small" style="margin: 12px 0" data-percent-sum>Total: <%= user.pots.sum(&:percent) %>%</p>
+  <button class="btn block" type="submit">Save pots</button>
+</form>
+
+<h2 class="section" id="plan">Your plan</h2>
+<form method="post" action="/settings/plan" class="card">
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="payday">Payday (day)</label>
+      <input type="number" id="payday" name="payday" value="<%= user.payday %>" min="1" max="31" placeholder="Irregular">
+    </div>
+    <div class="field">
+      <label class="label" for="emergency_months">Emergency months</label>
+      <input type="number" id="emergency_months" name="emergency_months" value="<%= user.emergency_months %>" min="1" max="12" required>
+    </div>
+  </div>
+  <p class="hint" style="margin: -10px 0 16px">Payday spreads Enjoy over the days until then. Leave it blank if your income is irregular, and it spreads to the end of the month.</p>
+  <div class="field">
+    <label class="label" for="living_target">Monthly living costs (GH₵)</label>
+    <input type="text" id="living_target" name="living_target" value="<%= Money.input(user.living_target) %>" inputmode="decimal" autocomplete="off" placeholder="Work it out from my spending">
+    <p class="hint">Sets the emergency fund target. Once Living has received this much in a month, its share of further income goes to Future Me, so a big payment doesn't just mean more spending.</p>
+  </div>
+  <div class="field">
+    <label class="label" for="cooling_hours">Cooling-off time for new wants (hours)</label>
+    <input type="number" id="cooling_hours" name="cooling_hours" value="<%= user.cooling_hours %>" min="0" max="168" required>
+    <p class="hint">0 turns it off.</p>
+  </div>
+  <button class="btn block" type="submit">Save plan</button>
+</form>
+
+<h2 class="section" id="accounts">Accounts</h2>
+<div class="card">
+  <% user.accounts.each do |account| %>
+    <div class="item">
+      <% if account.investment? %>
+        <div class="between"><strong><%= account.name %></strong><span class="muted small"><%= cedis(balances[account.id]) %> · managed under Invest</span></div>
+      <% else %>
+        <form method="post" action="/settings/accounts/<%= account.id %>" class="row2">
+          <input type="text" name="name" value="<%= account.name %>" maxlength="40" aria-label="Account name" required <%= 'disabled' if account.archived? %>>
+          <div class="between" style="gap: 8px">
+            <select name="kind" aria-label="Type" <%= 'disabled' if account.archived? %>>
+              <% Account::KINDS.each do |key, label| %><option value="<%= key %>" <%= 'selected' if account.kind == key %>><%= label %></option><% end %>
+            </select>
+            <% unless account.archived? %><button class="icon-btn soft" type="submit" aria-label="Save <%= account.name %>"><%== icon(:check, size: 18) %></button><% end %>
+          </div>
+        </form>
+        <div class="controls">
+          <span class="muted small"><%= cedis(balances[account.id]) %><%= ' · archived' if account.archived? %></span>
+          <span class="spacer"></span>
+          <form method="post" action="/settings/accounts/<%= account.id %>/<%= account.archived? ? 'restore' : 'archive' %>" class="inline-form">
+            <button class="btn small ghost" type="submit"><%= account.archived? ? 'Bring back' : 'Archive' %></button>
+          </form>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+  <form method="post" action="/settings/accounts" class="item">
+    <div class="label">Add an account</div>
+    <div class="row2">
+      <input type="text" name="name" maxlength="40" placeholder="e.g. Telecel Cash" aria-label="New account name" required>
+      <select name="kind" aria-label="Type">
+        <% Account::KINDS.each do |key, label| %><option value="<%= key %>"><%= label %></option><% end %>
+      </select>
+    </div>
+    <button class="btn small" type="submit" style="margin-top: 10px">Add account</button>
+  </form>
+</div>
+
+<h2 class="section" id="profile">You</h2>
+<form method="post" action="/settings/profile" class="card">
+  <div class="field">
+    <label class="label" for="name">Name</label>
+    <input type="text" id="name" name="name" value="<%= user.name %>" maxlength="60" required>
+  </div>
+  <div class="field">
+    <label class="label" for="email">Email (for logging in)</label>
+    <input type="email" id="email" name="email" value="<%= user.email %>" required>
+  </div>
+  <button class="btn block" type="submit">Save</button>
+</form>
+
+<h2 class="section" id="password">Password</h2>
+<form method="post" action="/settings/password" class="card">
+  <div class="field">
+    <label class="label" for="current">Current password</label>
+    <input type="password" id="current" name="current" autocomplete="current-password" required>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="new">New password</label>
+      <input type="password" id="new" name="new" autocomplete="new-password" minlength="8" required>
+    </div>
+    <div class="field">
+      <label class="label" for="confirm">Again</label>
+      <input type="password" id="confirm" name="confirm" autocomplete="new-password" minlength="8" required>
+    </div>
+  </div>
+  <button class="btn block" type="submit">Change password</button>
+</form>

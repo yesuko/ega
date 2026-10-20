@@ -1,0 +1,56 @@
+<form method="post" action="/move" data-hints="from_id">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <p class="muted small" style="margin: 0 4px 14px">A transfer between your own accounts, like MoMo to the bank or a cash deposit. Each pot keeps its money; only where it sits changes.</p>
+
+  <div class="field">
+    <span class="label">From</span>
+    <%== erb :_account_chips, layout: false, locals: { name: 'from_id', selected: form['from_id'] } %>
+  </div>
+  <div class="field">
+    <span class="label">To</span>
+    <%== erb :_account_chips, layout: false, locals: { name: 'to_id', selected: form['to_id'] } %>
+  </div>
+
+  <div class="field">
+    <span class="label">How much of each pot</span>
+    <div class="card tight rows">
+      <% current_user.pots.each do |pot| %>
+        <div class="row <%= pot_class(pot) %>">
+          <span class="dot"></span>
+          <div class="grow">
+            <label class="title" for="part-<%= pot.id %>"><%= pot.name %></label>
+            <div class="sub" data-hint-pot="<%= pot.id %>"></div>
+          </div>
+          <input type="text" id="part-<%= pot.id %>" name="parts[<%= pot.id %>]" value="<%= form['parts'][pot.id.to_s] %>" inputmode="decimal" autocomplete="off" placeholder="0.00" style="max-width: 130px; text-align: right">
+        </div>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="fee">Transfer fee</label>
+      <input type="text" id="fee" name="fee" value="<%= form['fee'] %>" inputmode="decimal" autocomplete="off" placeholder="0.00">
+    </div>
+    <div class="field">
+      <label class="label" for="fee_pot_id">Fee paid by</label>
+      <select id="fee_pot_id" name="fee_pot_id">
+        <% current_user.pots.each do |pot| %>
+          <option value="<%= pot.id %>" <%= 'selected' if form['fee_pot_id'].to_s == pot.id.to_s %>><%= pot.name %></option>
+        <% end %>
+      </select>
+    </div>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="occurred_on">Date</label>
+      <input type="date" id="occurred_on" name="occurred_on" value="<%= form['occurred_on'] %>" max="<%= today.iso8601 %>">
+    </div>
+    <div class="field">
+      <label class="label" for="note">Note</label>
+      <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="120" placeholder="Optional">
+    </div>
+  </div>
+  <button class="btn block" type="submit">Save the move</button>
+</form>
+<script type="application/json" id="balances"><%== json_for_script(balances) %></script>

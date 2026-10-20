@@ -1,0 +1,24 @@
+<form method="post" action="/buy/<%= item.id %>/purchase" data-cover="<%= balance %>">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <div class="card">
+    <label class="label center" for="paid">What you paid</label>
+    <label class="amount" style="padding-top: 6px"><span>GH₵</span><input id="paid" name="paid" inputmode="decimal" autocomplete="off" value="<%= form['paid'] %>"></label>
+    <p class="center small muted" style="margin: 0">The Buy List pot has <%= cedis(balance) %><%= filled < item.price ? "; #{cedis(filled)} of it was for this" : '' %>.</p>
+  </div>
+
+  <div class="field" data-cover-field>
+    <span class="label">The rest comes from</span>
+    <%== erb :_pot_chips, layout: false, locals: { name: 'cover_pot_id', selected: form['cover_pot_id'], except: 'buy' } %>
+    <p class="hint" data-cover-hint></p>
+  </div>
+
+  <div class="field">
+    <span class="label">Paid from</span>
+    <%== erb :_account_chips, layout: false, locals: { name: 'account_id', selected: form['account_id'] } %>
+  </div>
+  <div class="field">
+    <label class="label" for="occurred_on">Date</label>
+    <input type="date" id="occurred_on" name="occurred_on" value="<%= form['occurred_on'] %>" max="<%= today.iso8601 %>">
+  </div>
+  <button class="btn block" type="submit">Save the purchase</button>
+</form>

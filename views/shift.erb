@@ -1,0 +1,35 @@
+<form method="post" action="/shift" data-hints="account_id">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <p class="muted small" style="margin: 0 4px 14px">Give money from one pot to another without moving it, like Enjoy left over at month end going to Future Me.</p>
+
+  <div class="card">
+    <label class="amount"><span>GH₵</span><input name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="<%= form['amount'] %>" aria-label="Amount" autofocus></label>
+  </div>
+
+  <div class="field">
+    <span class="label">From pot</span>
+    <%== erb :_pot_chips, layout: false, locals: { name: 'from_pot_id', selected: form['from_pot_id'] } %>
+  </div>
+  <div class="field">
+    <span class="label">To pot</span>
+    <%== erb :_pot_chips, layout: false, locals: { name: 'to_pot_id', selected: form['to_pot_id'] } %>
+  </div>
+  <div class="field">
+    <span class="label">The money is in</span>
+    <%== erb :_account_chips, layout: false, locals: { name: 'account_id', selected: form['account_id'] } %>
+    <p class="hint" data-hint-from="from_pot_id"></p>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="occurred_on">Date</label>
+      <input type="date" id="occurred_on" name="occurred_on" value="<%= form['occurred_on'] %>" max="<%= today.iso8601 %>">
+    </div>
+    <div class="field">
+      <label class="label" for="note">Note</label>
+      <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="120" placeholder="Optional">
+    </div>
+  </div>
+  <button class="btn block" type="submit">Save</button>
+</form>
+<script type="application/json" id="balances"><%== json_for_script(balances) %></script>
+<script type="application/json" id="pot-names"><%== json_for_script(current_user.pots.to_h { |p| [p.id, p.name] }) %></script>

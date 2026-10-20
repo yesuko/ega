@@ -1,0 +1,19 @@
+<div class="card tight rows">
+  <% [['/activity', :list, 'Activity', 'Everything recorded, month by month'],
+      ['/review', :bar_chart, 'Monthly review', 'Where the money went, and how much you saved'],
+      ['/learn', :book_open, 'Investing in Ghana', 'What makes sense, and the red flags'],
+      ['/setup', :flag, 'Starting balances', 'Add money you had before using the app'],
+      ['/settings', :settings, 'Settings', 'Pots and shares, accounts, payday, password']].each do |href, icon_name, title, sub| %>
+    <a class="row" href="<%= href %>">
+      <span class="badge sm"><%== icon(icon_name, size: 17) %></span>
+      <div class="grow"><div class="title"><%= title %></div><div class="sub"><%= sub %></div></div>
+      <%== icon(:chevron_right, size: 18, css_class: 'muted') %>
+    </a>
+  <% end %>
+</div>
+
+<div class="callout"><%== icon(:smartphone, size: 18) %><span>To keep it on your home screen: on Android open the browser menu and choose <strong>Add to Home screen</strong> or <strong>Install app</strong>; on iPhone tap Share, then <strong>Add to Home Screen</strong>.</span></div>
+
+<form method="post" action="/logout">
+  <button class="btn block ghost" type="submit"><%== icon(:log_out, size: 18) %>Log out</button>
+</form>

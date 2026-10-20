@@ -1,0 +1,20 @@
+<form method="post" action="/setup">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <p class="muted small" style="margin: 0 4px 14px">What you have today, and which pot each part belongs to. Savings usually go to Future Me, everyday money to Living. Leave the rest blank. You can do this again later if you missed something.</p>
+
+  <% current_user.cash_accounts.each do |account| %>
+    <div class="card">
+      <h2 class="between"><span><%= account.name %></span><span class="badge sm c-muted"><%== icon(account.icon, size: 16) %></span></h2>
+      <div class="row2" style="margin-top: 10px">
+        <% current_user.pots.each do |pot| %>
+          <div class="field" style="margin-bottom: 10px">
+            <label class="label" for="b-<%= account.id %>-<%= pot.id %>"><span class="dot <%= pot_class(pot) %>"></span> <%= pot.name %></label>
+            <input type="text" id="b-<%= account.id %>-<%= pot.id %>" name="balances[<%= account.id %>][<%= pot.id %>]" value="<%= values.dig(account.id.to_s, pot.id.to_s) %>" inputmode="decimal" autocomplete="off" placeholder="0.00">
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+  <p class="hint" style="margin: -2px 4px 16px">Investments you already hold go in under Invest, so their dates and rates are tracked.</p>
+  <button class="btn block" type="submit">Save starting balances</button>
+</form>

@@ -1,0 +1,154 @@
+<% hours = current_user.cooling_hours %>
+<section class="card">
+  <div class="between">
+    <div>
+      <div class="muted small" style="font-weight: 600"><%= current_user.pot('buy').name %> pot</div>
+      <div style="font-size: 28px; font-weight: 750"><%= cedis(balance, short: true) %></div>
+    </div>
+    <span class="badge c-buy"><%== icon(:shopping_bag) %></span>
+  </div>
+  <p class="small muted" style="margin: 6px 0 0">
+    Fills your list from the top. Gets <%= current_user.pot('buy').percent %>% of every income<%= list[:rate] ? ", about #{cedis(list[:rate], short: true)} a month lately" : '' %>.
+  </p>
+</section>
+
+<details class="card fold" id="add" <%= 'open' if error || form.any? %>>
+  <summary class="between"><strong>Add something you want</strong><span class="icon-btn soft"><%== icon(:plus, size: 18) %></span></summary>
+  <form method="post" action="/buy">
+    <%== erb :_error, layout: false, locals: { error: error } %>
+    <div class="field">
+      <label class="label" for="name">What</label>
+      <input type="text" id="name" name="name" value="<%= form['name'] %>" maxlength="60" placeholder="New phone, laptop, shoes…" required>
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label class="label" for="price">Price (GH₵)</label>
+        <input type="text" id="price" name="price" value="<%= form['price'] %>" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
+      </div>
+      <div class="field">
+        <label class="label" for="target_on">Want it by</label>
+        <input type="date" id="target_on" name="target_on" value="<%= form['target_on'] %>" min="<%= today.iso8601 %>">
+      </div>
+    </div>
+    <div class="field">
+      <label class="label" for="note">Note or link</label>
+      <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="200" placeholder="Optional">
+    </div>
+    <% if hours.positive? %>
+      <label class="check field"><input type="checkbox" name="planned" value="1" <%= 'checked' if form['planned'] == '1' %>> I planned this before. Skip the <%= hours %>-hour wait.</label>
+      <p class="hint" style="margin-top: -10px; margin-bottom: 14px">New wants wait <%= hours %> hours first. Most urges fade by then.</p>
+    <% end %>
+    <button class="btn block" type="submit">Add</button>
+  </form>
+</details>
+
+<% if cooling.any? %>
+  <h2 class="section">Cooling off</h2>
+  <div class="card tight">
+    <% cooling.each do |item| %>
+      <div class="item">
+        <div class="top">
+          <span class="badge sm c-buy"><%== icon(:hourglass, size: 16) %></span>
+          <div class="grow">
+            <div class="name"><%= item.name %></div>
+            <div class="facts">
+              <%= cedis(item.price, short: true) %> ·
+              <% if item.cooled? %>
+                Time's up. Still want it?
+              <% else %>
+                <% left = ((item.cooling_until - Time.now) / 3600.0).ceil %>
+                decide in <%= left %> <%= left == 1 ? 'hour' : 'hours' %>
+              <% end %>
+            </div>
+          </div>
+        </div>
+        <div class="controls">
+          <% if item.cooled? %>
+            <form method="post" action="/buy/<%= item.id %>/approve" class="inline-form"><button class="btn small" type="submit">Yes, add to list</button></form>
+          <% end %>
+          <form method="post" action="/buy/<%= item.id %>/drop" class="inline-form"><button class="btn small ghost" type="submit">Drop it</button></form>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<h2 class="section">The list <% if list[:items].any? %><span><%= cedis(list[:items].sum { |r| r[:item].price }, short: true) %></span><% end %></h2>
+<% if list[:items].empty? %>
+  <div class="card empty">Nothing on the list yet. Add what you're saving up for, and the Buy List pot fills it top first.</div>
+<% else %>
+  <div class="card tight">
+    <% list[:items].each_with_index do |row, index| %>
+      <% item = row[:item] %>
+      <div class="item c-buy">
+        <div class="top">
+          <span class="rank"><%= index + 1 %></span>
+          <div class="grow">
+            <div class="between">
+              <div class="name"><%= item.name %></div>
+              <div class="num"><%= cedis(item.price, short: true) %></div>
+            </div>
+            <div class="meter"><i style="width: <%= percent_of(row[:filled], item.price) %>%"></i></div>
+            <div class="facts">
+              <% if row[:short].zero? %>
+                <span class="pill good"><%== icon(:check, size: 12) %>Ready to buy</span>
+              <% else %>
+                <%= cedis(row[:filled], short: true) %> saved, <%= cedis(row[:short], short: true) %> to go<% if row[:ready_on] %> · ready around <%= row[:ready_on].strftime('%b %Y') %><% end %>
+              <% end %>
+            </div>
+            <% if item.target_on && row[:short].positive? %>
+              <div class="facts">
+                <% if row[:late] %>
+                  <span class="pill bad">Target date passed</span>
+                <% elsif row[:per_week] %>
+                  Wanted by <%= short_date(item.target_on) %>: needs about <%= cedis(row[:per_week], short: true) %> a week
+                <% end %>
+              </div>
+            <% end %>
+            <% if item.note %><div class="facts"><%= item.note %></div><% end %>
+          </div>
+        </div>
+        <div class="controls">
+          <form method="post" action="/buy/<%= item.id %>/move" class="inline-form">
+            <input type="hidden" name="dir" value="up">
+            <button class="icon-btn" type="submit" aria-label="Move up" <%= 'disabled' if index.zero? %>><%== icon(:chevron_up, size: 18) %></button>
+          </form>
+          <form method="post" action="/buy/<%= item.id %>/move" class="inline-form">
+            <input type="hidden" name="dir" value="down">
+            <button class="icon-btn" type="submit" aria-label="Move down" <%= 'disabled' if index == list[:items].size - 1 %>><%== icon(:chevron_down, size: 18) %></button>
+          </form>
+          <a class="icon-btn" href="/buy/<%= item.id %>/edit" aria-label="Edit"><%== icon(:pencil, size: 16) %></a>
+          <span class="spacer"></span>
+          <form method="post" action="/buy/<%= item.id %>/drop" class="inline-form" data-confirm="Drop <%= item.name %> from the list?">
+            <button class="btn small ghost" type="submit">Drop</button>
+          </form>
+          <a class="btn small <%= 'ghost' unless row[:short].zero? %>" href="/buy/<%= item.id %>/purchase">I bought it</a>
+        </div>
+      </div>
+    <% end %>
+  </div>
+  <% if list[:spare].positive? %>
+    <p class="hint" style="margin: 0 4px">Everything on the list is funded, with <%= cedis(list[:spare], short: true) %> to spare.</p>
+  <% end %>
+<% end %>
+
+<% if done.any? %>
+  <h2 class="section">Done</h2>
+  <div class="card tight rows">
+    <% done.each do |item| %>
+      <div class="row">
+        <span class="badge sm <%= item.status == 'bought' ? 'c-buy' : 'c-muted' %>"><%== icon(item.status == 'bought' ? :check : :x, size: 16) %></span>
+        <div class="grow">
+          <div class="title"><%= item.name %></div>
+          <div class="sub"><%= item.status == 'bought' ? "Bought #{short_date(item.bought_on)}" : 'Dropped. Money kept.' %></div>
+        </div>
+        <div class="num"><%= cedis(item.status == 'bought' ? item.paid : item.price, short: true) %></div>
+        <% unless item.status == 'bought' %>
+          <form method="post" action="/buy/<%= item.id %>/delete" class="inline-form">
+            <button class="icon-btn soft" type="submit" aria-label="Remove <%= item.name %>"><%== icon(:trash, size: 16) %></button>
+          </form>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+<% end %>

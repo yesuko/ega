@@ -1,0 +1,8 @@
+<div class="chips">
+  <% current_user.cash_accounts.each do |account| %>
+    <label class="chip">
+      <input type="radio" name="<%= name %>" value="<%= account.id %>" <%= 'checked' if selected.to_s == account.id.to_s %>>
+      <span><%== icon(account.icon, size: 16) %><%= account.name %></span>
+    </label>
+  <% end %>
+</div>

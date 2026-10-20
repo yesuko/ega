@@ -1,0 +1,32 @@
+<form method="get" action="/activity" class="filters" data-autosubmit>
+  <select name="month" aria-label="Month">
+    <% months.each do |m| %>
+      <option value="<%= m.strftime('%Y-%m') %>" <%= 'selected' if m == month %>><%= m.strftime('%B %Y') %></option>
+    <% end %>
+  </select>
+  <select name="pot" aria-label="Pot">
+    <option value="">All pots</option>
+    <% current_user.pots.each do |p| %><option value="<%= p.id %>" <%= 'selected' if pot == p %>><%= p.name %></option><% end %>
+  </select>
+  <select name="account" aria-label="Account">
+    <option value="">All accounts</option>
+    <% current_user.accounts.each do |a| %><option value="<%= a.id %>" <%= 'selected' if account == a %>><%= a.name %></option><% end %>
+  </select>
+  <select name="kind" aria-label="Type">
+    <option value="">Everything</option>
+    <% Transaction::KINDS.each do |key, label| %><option value="<%= key %>" <%= 'selected' if kind == key %>><%= label %></option><% end %>
+  </select>
+  <noscript><button class="btn small" type="submit">Show</button></noscript>
+</form>
+
+<% if days.empty? %>
+  <div class="empty">Nothing recorded<%= ' like that' if pot || account || kind %> in <%= month.strftime('%B') %>.</div>
+<% end %>
+<% days.each do |date, txns| %>
+  <div class="day"><%= day_label(date) %></div>
+  <div class="card tight rows">
+    <% txns.each do |txn| %>
+      <%== erb :_txn_row, layout: false, locals: { txn: txn } %>
+    <% end %>
+  </div>
+<% end %>

@@ -1,0 +1,111 @@
+<% active = investment.active? %>
+<div class="card">
+  <div class="between">
+    <div>
+      <div class="muted small" style="font-weight: 600"><%= investment.kind_label %><%= " · #{investment.provider}" if investment.provider %></div>
+      <div style="font-size: 30px; font-weight: 750"><%= cedis(investment.value) %></div>
+    </div>
+    <a class="icon-btn soft" href="/invest/<%= investment.id %>/edit" aria-label="Edit details"><%== icon(:pencil, size: 16) %></a>
+  </div>
+  <div class="figures" style="margin-top: 12px">
+    <div><span>Put in</span><strong><%= Money.format(investment.principal, short: true) %></strong></div>
+    <div><span>Gain</span><strong class="<%= investment.gain.negative? ? 'neg' : 'pos' %>"><%= signed(investment.gain, short: true).sub('GH₵ ', '') %></strong></div>
+    <div><span>Rate</span><strong><%= investment.rate ? "#{investment.rate.to_s('F')}%" : '–' %></strong></div>
+  </div>
+  <p class="small muted" style="margin: 12px 0 0">
+    Started <%= short_date(investment.started_on) %>.
+    <% if !active %>
+      Closed <%= short_date(investment.closed_on) %>.
+    <% elsif investment.matures_on %>
+      <%= investment.matures_on > today ? 'Matures' : 'Matured' %> <%= short_date(investment.matures_on) %> (<%= days_from_now(investment.matures_on) %>).
+      <% if (expected = investment.expected_at_maturity) %>Expect about <%= cedis(expected, short: true) %> then.<% end %>
+    <% end %>
+    <%= 'Counts towards the emergency fund.' if investment.emergency && active %>
+  </p>
+  <% if investment.note %><p class="small" style="margin: 8px 0 0"><%= investment.note %></p><% end %>
+</div>
+
+<%== erb :_error, layout: false, locals: { error: error } %>
+
+<% if active %>
+  <% due = investment.matures_on && investment.matures_on <= today %>
+  <details class="card fold" <%= 'open' if due || form['to_id'] %>>
+    <summary class="between"><strong><%= due ? 'It matured: record what you got' : 'Take money out' %></strong><span class="icon-btn soft"><%== icon(:coins, size: 18) %></span></summary>
+    <form method="post" action="/invest/<%= investment.id %>/cash-out">
+      <div class="row2">
+        <div class="field">
+          <label class="label" for="out-amount">Amount received</label>
+          <input type="text" id="out-amount" name="amount" value="<%= form['to_id'] ? form['amount'] : (due ? Money.input(investment.expected_at_maturity || investment.value) : '') %>" inputmode="decimal" autocomplete="off" placeholder="0.00">
+        </div>
+        <div class="field">
+          <label class="label" for="out-on">Date</label>
+          <input type="date" id="out-on" name="occurred_on" value="<%= form['occurred_on'] || [investment.matures_on || today, today].min.iso8601 %>" max="<%= today.iso8601 %>">
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">Into</span>
+        <%== erb :_account_chips, layout: false, locals: { name: 'to_id', selected: form['to_id'] || current_user.cash_accounts.find { |a| a.kind == 'bank' }&.id } %>
+      </div>
+      <label class="check field"><input type="checkbox" name="close" value="1" <%= 'checked' if due || form['close'] == '1' %>> Close it: this is everything</label>
+      <label class="check field"><input type="checkbox" name="rollover" value="1" <%= 'checked' if form['rollover'] == '1' %>> Roll it over: record the new one next</label>
+      <button class="btn block" type="submit">Save</button>
+    </form>
+  </details>
+
+  <details class="card fold">
+    <summary class="between"><strong>Update what it's worth</strong><span class="icon-btn soft"><%== icon(:trending_up, size: 18) %></span></summary>
+    <form method="post" action="/invest/<%= investment.id %>/value">
+      <div class="field">
+        <label class="label" for="value">Worth now (GH₵)</label>
+        <input type="text" id="value" name="value" value="<%= form['value'] %>" inputmode="decimal" autocomplete="off" placeholder="<%= Money.input(investment.value) %>">
+        <p class="hint">For funds and shares: the value on your latest statement or app.</p>
+      </div>
+      <button class="btn block" type="submit">Save</button>
+    </form>
+  </details>
+
+  <details class="card fold">
+    <summary class="between"><strong>Add money to it</strong><span class="icon-btn soft"><%== icon(:plus, size: 18) %></span></summary>
+    <form method="post" action="/invest/<%= investment.id %>/top-up">
+      <div class="row2">
+        <div class="field">
+          <label class="label" for="top-amount">Amount</label>
+          <input type="text" id="top-amount" name="amount" value="" inputmode="decimal" autocomplete="off" placeholder="0.00">
+        </div>
+        <div class="field">
+          <label class="label" for="top-on">Date</label>
+          <input type="date" id="top-on" name="occurred_on" value="<%= today.iso8601 %>" max="<%= today.iso8601 %>">
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">From</span>
+        <div class="chips">
+          <% current_user.cash_accounts.each do |account| %>
+            <label class="chip"><input type="radio" name="from_id" value="<%= account.id %>" <%= 'checked' if account.kind == 'momo' && investment.kind == 'fund' || account.kind == 'bank' && investment.kind != 'fund' %>><span><%== icon(account.icon, size: 16) %><%= account.name %></span></label>
+          <% end %>
+          <label class="chip"><input type="radio" name="from_id" value="held"><span>Deducted from salary</span></label>
+        </div>
+      </div>
+      <button class="btn block" type="submit">Save</button>
+    </form>
+  </details>
+<% end %>
+
+<h2 class="section">History</h2>
+<div class="card tight rows">
+  <% history.each_with_index do |txn, index| %>
+    <div class="row">
+      <span class="badge sm c-future"><%== icon(txn.icon, size: 16) %></span>
+      <div class="grow">
+        <div class="title"><%= txn.note || txn.kind_label %></div>
+        <div class="sub"><%= short_date(txn.occurred_on) %></div>
+      </div>
+      <div class="num"><%= txn.kind == 'growth' ? signed(txn.net) : cedis(txn.amount) %></div>
+      <% if index.zero? %>
+        <form method="post" action="/invest/<%= investment.id %>/undo" class="inline-form" data-confirm="<%= history.size == 1 ? "Undo this? It removes #{investment.name} completely." : 'Undo this change?' %>">
+          <button class="icon-btn soft" type="submit" aria-label="Undo" title="Undo"><%== icon(:refresh, size: 16) %></button>
+        </form>
+      <% end %>
+    </div>
+  <% end %>
+</div>

@@ -1,0 +1,59 @@
+<form method="post" action="/income" data-split>
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <div class="card">
+    <label class="amount"><span>GH₵</span><input name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00" value="<%= form['amount'] %>" aria-label="Amount received" autofocus data-amount></label>
+  </div>
+
+  <div class="field">
+    <span class="label">Came into</span>
+    <%== erb :_account_chips, layout: false, locals: { name: 'account_id', selected: form['account_id'] } %>
+  </div>
+
+  <div class="field">
+    <label class="label" for="source">From</label>
+    <input type="text" id="source" name="source" value="<%= form['source'] %>" placeholder="Salary, client work, side job…" maxlength="40">
+    <div class="chips" style="margin-top: 8px">
+      <% sources.each do |source| %>
+        <button type="button" class="chip" data-fill="source" data-value="<%= source %>"><span><%= source %></span></button>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="label">How it's shared</span>
+    <div class="chips">
+      <label class="chip"><input type="radio" name="mode" value="split" data-mode <%= 'checked' unless form['mode'] == 'one' %>><span>Split it</span></label>
+      <label class="chip"><input type="radio" name="mode" value="one" data-mode <%= 'checked' if form['mode'] == 'one' %>><span>All to one pot</span></label>
+    </div>
+  </div>
+
+  <div class="card tight rows split <%= 'hide' if form['mode'] == 'one' %>" data-show-mode="split">
+    <% split[:pots].each do |pot| %>
+      <div class="row c-<%= pot[:kind] %>">
+        <span class="dot"></span>
+        <div class="grow"><%= pot[:name] %> <span class="muted small"><%= pot[:percent] %>%</span></div>
+        <div class="num" data-part="<%= pot[:id] %>">–</div>
+      </div>
+    <% end %>
+  </div>
+  <p class="hint hide" data-overflow style="margin: -8px 4px 18px"></p>
+
+  <div class="field <%= 'hide' unless form['mode'] == 'one' %>" data-show-mode="one">
+    <%== erb :_pot_chips, layout: false, locals: { name: 'pot_id', selected: form['pot_id'] } %>
+    <p class="hint">For a refund or money returned to you, which shouldn't be split.</p>
+  </div>
+
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="occurred_on">Date</label>
+      <input type="date" id="occurred_on" name="occurred_on" value="<%= form['occurred_on'] %>" max="<%= today.iso8601 %>">
+    </div>
+    <div class="field">
+      <label class="label" for="note">Note</label>
+      <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="120" placeholder="Optional">
+    </div>
+  </div>
+  <input type="hidden" name="external_ref" value="<%= form['external_ref'] %>">
+  <button class="btn block" type="submit">Save and split</button>
+</form>
+<script type="application/json" id="split-data"><%== json_for_script(split) %></script>

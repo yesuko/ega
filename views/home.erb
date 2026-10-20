@@ -1,0 +1,176 @@
+<% user = current_user %>
+<% hour = Time.now.hour %>
+<header class="hello">
+  <h1>Good <%= hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening' %>, <%= user.first_name %></h1>
+  <p><%= long_date(today) %></p>
+</header>
+
+<% unless started %>
+  <div class="card">
+    <div class="todo">
+      <span class="badge"><%== icon(:flag) %></span>
+      <div class="grow">
+        <div class="title">Start with what you have now</div>
+        <div class="sub">Enter what's in your bank, MoMo and cash today, and which pot each part belongs to. Then record each income as it comes in, and it's split for you.</div>
+        <div class="do">
+          <a class="btn small" href="/setup">Enter starting balances</a>
+          <a class="btn small ghost" href="/income/new">Record an income</a>
+        </div>
+      </div>
+    </div>
+  </div>
+<% end %>
+
+<% over = safe[:left].negative? %>
+<section class="hero <%= 'over' if over %>">
+  <div class="label"><%= over ? "Over today's share by" : 'Safe to spend today' %></div>
+  <div class="figure"><small>GH₵</small><%= Money.format(safe[:left].abs) %></div>
+  <% if safe[:allowance].positive? && safe[:spent].positive? %>
+    <div class="meter"><i style="width: <%= percent_of(safe[:spent], safe[:allowance]) %>%"></i></div>
+  <% end %>
+  <div class="meta">
+    <% next_on = safe[:next_income_on] %>
+    <% until_text = user.payday ? "payday, #{short_date(next_on)}" : short_date(next_on) %>
+    <% if over %>
+      Spent <%= cedis(safe[:spent]) %> of <%= cedis(safe[:allowance]) %> from Enjoy today. Tomorrow's share will be a little smaller.
+    <% elsif safe[:balance] <= 0 && safe[:spent].zero? %>
+      Your Enjoy pot is empty until your next income.
+    <% else %>
+      <%= user.pot('enjoy').name %> has <%= cedis(safe[:balance], short: true) %> for <%= safe[:days] %> <%= safe[:days] == 1 ? 'day' : 'days' %>, until <%= until_text %>.
+      <% if safe[:spent].positive? %>Spent <%= cedis(safe[:spent], short: true) %> today.<% end %>
+    <% end %>
+  </div>
+</section>
+
+<nav class="quick" aria-label="Quick actions">
+  <a href="/income/new"><%== icon(:arrow_down_left, size: 22) %>Money in</a>
+  <a href="/spend/new"><%== icon(:arrow_up_right, size: 22) %>Money out</a>
+  <a href="/move/new"><%== icon(:arrow_left_right, size: 22) %>Move</a>
+  <a href="/import"><%== icon(:message, size: 22) %>Paste SMS</a>
+</nav>
+
+<% todo_count = moves.size + unbanked.size + cooled.size + maturities.size + overdrawn.size %>
+<% if todo_count.positive? %>
+  <h2 class="section">To do <span><%= todo_count %></span></h2>
+  <div class="card">
+    <% moves.each do |move| %>
+      <div class="todo">
+        <span class="badge"><%== icon(:arrow_left_right) %></span>
+        <div class="grow">
+          <div class="title">Move <%= cedis(move[:total], short: true) %> from <%= move[:from].name %> to <%= move[:to].name %></div>
+          <div class="sub"><%= move[:parts].map { |pot, value| "#{pot.name} #{Money.format(value, short: true)}" }.join(' · ') %></div>
+          <div class="do">
+            <form method="post" action="/move" class="inline-form">
+              <input type="hidden" name="from_id" value="<%= move[:from].id %>">
+              <input type="hidden" name="to_id" value="<%= move[:to].id %>">
+              <input type="hidden" name="occurred_on" value="<%= today.iso8601 %>">
+              <% move[:parts].each do |pot, value| %>
+                <input type="hidden" name="parts[<%= pot.id %>]" value="<%= Money.input(value) %>">
+              <% end %>
+              <button class="btn small" type="submit"><%== icon(:check, size: 16) %>Done, I moved it</button>
+            </form>
+            <% query = URI.encode_www_form({ from: move[:from].id, to: move[:to].id }.merge(move[:parts].to_h { |pot, value| ["parts[#{pot.id}]", Money.input(value)] })) %>
+            <a class="btn small ghost" href="/move/new?<%= query %>">Change amount or add a fee</a>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <% unbanked.each do |cash| %>
+      <div class="todo">
+        <span class="badge c-warn"><%== icon(:banknote) %></span>
+        <div class="grow">
+          <div class="title">Bank your cash: <%= cedis(cash[:balance], short: true) %></div>
+          <div class="sub">Some of it has been in <%= cash[:account].name %> for <%= cash[:days] %> days. Deposit it to MoMo or the bank so it doesn't slip away.</div>
+          <div class="do"><a class="btn small" href="/move/new?from=<%= cash[:account].id %>">Record the deposit</a></div>
+        </div>
+      </div>
+    <% end %>
+
+    <% cooled.each do |item| %>
+      <div class="todo">
+        <span class="badge c-buy"><%== icon(:hourglass) %></span>
+        <div class="grow">
+          <div class="title">Still want <%= item.name %>?</div>
+          <div class="sub"><%= cedis(item.price, short: true) %>. The cooling-off time is over.</div>
+          <div class="do">
+            <form method="post" action="/buy/<%= item.id %>/approve" class="inline-form"><button class="btn small" type="submit">Yes, add it to the list</button></form>
+            <form method="post" action="/buy/<%= item.id %>/drop" class="inline-form">
+              <input type="hidden" name="back" value="home">
+              <button class="btn small ghost" type="submit">No, drop it</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <% maturities.each do |investment| %>
+      <div class="todo">
+        <span class="badge c-future"><%== icon(:calendar) %></span>
+        <div class="grow">
+          <div class="title"><%= investment.name %> <%= investment.matures_on > today ? 'matures' : 'matured' %> <%= days_from_now(investment.matures_on) %></div>
+          <div class="sub">When the money arrives, record what you received. You can roll it over into a new one in the same step.</div>
+          <div class="do"><a class="btn small" href="/invest/<%= investment.id %>">Open</a></div>
+        </div>
+      </div>
+    <% end %>
+
+    <% overdrawn.each do |pot, balance| %>
+      <div class="todo">
+        <span class="badge c-danger"><%== icon(:alert) %></span>
+        <div class="grow">
+          <div class="title"><%= pot.name %> is <%= cedis(-balance, short: true) %> below zero</div>
+          <div class="sub">More was spent from it than it had. Give it money from another pot, or record the income that covered it.</div>
+          <div class="do"><a class="btn small" href="/shift/new?to=<%= pot.id %>&from=<%= user.pot(pot.kind == 'enjoy' ? 'living' : 'enjoy').id %>">Top it up from another pot</a></div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% end %>
+
+<h2 class="section">Your pots <span><%= cedis(plan.total, short: true) %></span></h2>
+<div class="pots">
+  <% user.pots.each do |pot| %>
+    <% balance = plan.pot_balance(pot) %>
+    <a class="card pot <%= pot_class(pot) %>" href="/activity?pot=<%= pot.id %>">
+      <div class="name"><span class="badge sm"><%== icon(pot.icon, size: 16) %></span><%= pot.name %></div>
+      <div class="figure <%= 'neg' if balance.negative? %>"><%= cedis(balance, short: true) %></div>
+      <div class="where">
+        <%= user.accounts.filter_map { |a| (held = plan.balance_at(pot, a)).zero? ? nil : "#{a.name} #{Money.format(held, short: true)}" }.join(' · ').then { |s| s.empty? ? "#{pot.percent}% of each income" : s } %>
+      </div>
+      <% if pot.kind == 'future' && emergency[:target] %>
+        <div class="meter thin"><i style="width: <%= percent_of(emergency[:saved], emergency[:target]) %>%"></i></div>
+        <div class="where"><%= emergency[:done] ? 'Emergency fund full' : format('Emergency fund: %.1f of %d months', emergency[:months].clamp(0, 99), user.emergency_months) %></div>
+      <% elsif pot.kind == 'buy' && (first = buy[:items].first) %>
+        <div class="meter thin"><i style="width: <%= percent_of(first[:filled], first[:item].price) %>%"></i></div>
+        <div class="where">Next: <%= first[:item].name %> <%= percent_of(first[:filled], first[:item].price) %>%</div>
+      <% end %>
+    </a>
+  <% end %>
+</div>
+
+<h2 class="section">Accounts</h2>
+<div class="card tight rows">
+  <% user.accounts.reject(&:archived?).each do |account| %>
+    <% balance = plan.account_balance(account) %>
+    <div class="row">
+      <span class="badge sm c-muted"><%== icon(account.icon, size: 17) %></span>
+      <div class="grow"><div class="title"><%= account.name %></div></div>
+      <div class="num <%= 'neg' if balance.negative? %>"><%= cedis(balance) %></div>
+      <% if account.investment? %>
+        <a class="icon-btn" href="/invest" aria-label="Open investments"><%== icon(:chevron_right, size: 18) %></a>
+      <% else %>
+        <a class="icon-btn" href="/check/new?account_id=<%= account.id %>" aria-label="Check <%= account.name %> balance" title="Check the balance"><%== icon(:scale, size: 18) %></a>
+      <% end %>
+    </div>
+  <% end %>
+</div>
+
+<% if recent.any? %>
+  <h2 class="section">Recent <a href="/activity">See all</a></h2>
+  <div class="card tight rows">
+    <% recent.each do |txn| %>
+      <%== erb :_txn_row, layout: false, locals: { txn: txn, show_date: true } %>
+    <% end %>
+  </div>
+<% end %>

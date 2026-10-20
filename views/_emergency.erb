@@ -1,0 +1,23 @@
+<section class="card c-future">
+  <div class="between">
+    <div>
+      <div class="muted small" style="font-weight: 600">Emergency fund</div>
+      <div style="font-size: 26px; font-weight: 750"><%= cedis(emergency[:saved], short: true) %></div>
+    </div>
+    <span class="badge"><%== icon(:shield) %></span>
+  </div>
+  <% if emergency[:target] %>
+    <div class="meter" style="margin: 12px 0 8px"><i style="width: <%= percent_of(emergency[:saved], emergency[:target]) %>%"></i></div>
+    <p class="small muted" style="margin: 0">
+      <% if emergency[:done] %>
+        Full: <%= current_user.emergency_months %> months of living costs. New Future Me money can go to investments now.
+      <% else %>
+        <%= format('%.1f', emergency[:months].clamp(0, 99)) %> of <%= current_user.emergency_months %> months covered. Target <%= cedis(emergency[:target], short: true) %>
+        (<%= cedis(emergency[:living][:amount], short: true) %> a month, <%= emergency[:living][:source] == :target ? 'your living target' : "your Living spending over #{emergency[:living][:months]} #{emergency[:living][:months] == 1 ? 'month' : 'months'}" %>).
+        Build this before investing for the long term.
+      <% end %>
+    </p>
+  <% else %>
+    <p class="small muted" style="margin: 8px 0 0">Set a monthly living target in <a href="/settings#plan">Settings</a>, or record a full month of Living spending, and the target is worked out for you.</p>
+  <% end %>
+</section>

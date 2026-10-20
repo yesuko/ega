@@ -1,0 +1,27 @@
+<form method="post" action="/buy/<%= item.id %>" class="card">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <div class="field">
+    <label class="label" for="name">What</label>
+    <input type="text" id="name" name="name" value="<%= form['name'] %>" maxlength="60" required>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label class="label" for="price">Price (GH₵)</label>
+      <input type="text" id="price" name="price" value="<%= form['price'] %>" inputmode="decimal" autocomplete="off" required>
+    </div>
+    <div class="field">
+      <label class="label" for="target_on">Want it by</label>
+      <input type="date" id="target_on" name="target_on" value="<%= form['target_on'] %>">
+    </div>
+  </div>
+  <div class="field">
+    <label class="label" for="note">Note or link</label>
+    <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="200">
+  </div>
+  <button class="btn block" type="submit">Save</button>
+</form>
+<% unless item.status == 'bought' %>
+  <form method="post" action="/buy/<%= item.id %>/delete" data-confirm="Remove <%= item.name %> completely?">
+    <button class="btn block danger" type="submit"><%== icon(:trash, size: 18) %>Remove</button>
+  </form>
+<% end %>

@@ -1,0 +1,45 @@
+<form method="post" action="/check" data-check data-hints="account_id">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <p class="muted small" style="margin: 0 4px 14px">Open your banking or MoMo app and enter the balance it shows. Any gap is recorded, so you don't have to log every small spend.</p>
+
+  <div class="field">
+    <span class="label">Account</span>
+    <%== erb :_account_chips, layout: false, locals: { name: 'account_id', selected: form['account_id'] } %>
+  </div>
+
+  <div class="card tight rows">
+    <% current_user.pots.each do |pot| %>
+      <div class="row <%= pot_class(pot) %>">
+        <span class="dot"></span>
+        <div class="grow"><%= pot.name %></div>
+        <div class="num" data-hint-pot="<%= pot.id %>" data-plain></div>
+      </div>
+    <% end %>
+    <div class="row">
+      <div class="grow title">The app says</div>
+      <div class="num" data-app-total></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label class="label center" for="actual">The real balance</label>
+    <label class="amount" style="padding-top: 6px"><span>GH₵</span><input id="actual" name="actual" inputmode="decimal" autocomplete="off" placeholder="0.00" value="<%= form['actual'] %>"></label>
+    <p class="center small" data-diff></p>
+  </div>
+
+  <div class="field">
+    <span class="label">The difference belongs to</span>
+    <%== erb :_pot_chips, layout: false, locals: { name: 'pot_id', selected: form['pot_id'] } %>
+    <p class="hint">Usually Living: transport, food and data nobody wrote down.</p>
+  </div>
+
+  <div class="field" data-surplus>
+    <span class="label">If there's more than the app says</span>
+    <label class="check"><input type="radio" name="surplus" value="pot" <%= 'checked' unless form['surplus'] == 'income' %>> Add it to the pot above</label>
+    <label class="check" style="margin-top: 8px"><input type="radio" name="surplus" value="income" <%= 'checked' if form['surplus'] == 'income' %>> It's income I didn't record: split it</label>
+  </div>
+
+  <button class="btn block" type="submit">Save the balance</button>
+</form>
+<script type="application/json" id="balances"><%== json_for_script(balances) %></script>
+<script type="application/json" id="totals"><%== json_for_script(totals) %></script>

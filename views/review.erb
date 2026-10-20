@@ -1,0 +1,91 @@
+<% user = current_user %>
+<div class="monthnav">
+  <a class="icon-btn" href="/review?month=<%= (month << 1).strftime('%Y-%m') %>" aria-label="Previous month"><%== icon(:chevron_left) %></a>
+  <strong><%= month.strftime('%B %Y') %></strong>
+  <% if month < this_month %>
+    <a class="icon-btn" href="/review?month=<%= (month >> 1).strftime('%Y-%m') %>" aria-label="Next month"><%== icon(:chevron_right) %></a>
+  <% else %>
+    <span class="icon-btn" style="visibility: hidden"></span>
+  <% end %>
+</div>
+
+<div class="figures" style="margin-bottom: 12px">
+  <div><span>Money in</span><strong><%= Money.format(review[:income], short: true) %></strong></div>
+  <div><span>Saved</span><strong><%= review[:saving_rate] ? "#{review[:saving_rate]}%" : '–' %></strong></div>
+  <% change = review[:worth_end] - review[:worth_start] %>
+  <div><span>You own</span><strong class="<%= change.negative? ? 'neg' : 'pos' %>"><%= signed(change, short: true).sub('GH₵ ', '') %></strong></div>
+</div>
+
+<% if review[:income].zero? && review[:spent].empty? %>
+  <div class="card empty">Nothing recorded in <%= month.strftime('%B') %>.</div>
+<% else %>
+  <% if review[:income].positive? %>
+    <h2 class="section">Where the income went</h2>
+    <div class="card bars">
+      <% user.pots.each do |pot| %>
+        <% value = review[:into].fetch(pot.id, 0) %>
+        <div class="bar-row <%= pot_class(pot) %>">
+          <span><%= pot.name %></span>
+          <div class="meter"><i style="width: <%= percent_of(value, review[:income]) %>%"></i></div>
+          <span class="num"><%= Money.format(value, short: true) %></span>
+        </div>
+      <% end %>
+      <% if review[:sources].any? %>
+        <p class="small muted" style="margin: 10px 0 0">From <%= review[:sources].map { |source, total| "#{source} #{Money.format(total, short: true)}" }.join(' · ') %></p>
+      <% end %>
+    </div>
+  <% end %>
+
+  <h2 class="section">Spending by pot</h2>
+  <% top = [review[:spent].values.max || 0, 1].max %>
+  <div class="card bars">
+    <% user.pots.each do |pot| %>
+      <% value = review[:spent].fetch(pot.id, 0) %>
+      <div class="bar-row <%= pot_class(pot) %>">
+        <span><%= pot.name %></span>
+        <div class="meter"><i style="width: <%= percent_of(value, top) %>%"></i></div>
+        <span class="num"><%= Money.format(value, short: true) %></span>
+      </div>
+    <% end %>
+    <% enjoy = user.pot('enjoy') %>
+    <% enjoy_in = review[:into].fetch(enjoy.id, 0) %>
+    <% if enjoy_in.positive? %>
+      <p class="small muted" style="margin: 10px 0 0">You spent <%= percent_of(review[:spent].fetch(enjoy.id, 0), enjoy_in) %>% of what <%= enjoy.name %> received. Enjoying it is part of the plan.</p>
+    <% end %>
+  </div>
+
+  <% if month == this_month && (left = plan.pot_balance(enjoy)).positive? %>
+    <div class="card">
+      <div class="todo">
+        <span class="badge c-enjoy"><%== icon(:sparkles) %></span>
+        <div class="grow">
+          <div class="title"><%= cedis(left, short: true) %> left in <%= enjoy.name %></div>
+          <div class="sub">At the end of the month you can keep it for next month, or give some to Future Me or your Buy List.</div>
+          <div class="do"><a class="btn small ghost" href="/shift/new?from=<%= enjoy.id %>&to=<%= user.pot('future').id %>&amount=<%= Money.input(left) %>">Give it to Future Me</a></div>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <% if review[:growth].nonzero? %>
+    <p class="small muted" style="margin: 0 4px 12px">Investments <%= review[:growth].positive? ? 'grew' : 'fell' %> by <%= cedis(review[:growth].abs, short: true) %> this month.</p>
+  <% end %>
+
+  <% if review[:bought].any? %>
+    <h2 class="section">Bought from your Buy List</h2>
+    <div class="card tight rows">
+      <% review[:bought].each do |item| %>
+        <div class="row"><span class="badge sm c-buy"><%== icon(:check, size: 16) %></span><div class="grow title"><%= item.name %></div><div class="num"><%= cedis(item.paid, short: true) %></div></div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if review[:biggest].any? %>
+    <h2 class="section">Biggest spends</h2>
+    <div class="card tight rows">
+      <% review[:biggest].each do |txn| %>
+        <%== erb :_txn_row, layout: false, locals: { txn: txn, show_date: true } %>
+      <% end %>
+    </div>
+  <% end %>
+<% end %>
