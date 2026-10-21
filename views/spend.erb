@@ -31,6 +31,7 @@
       <input type="date" id="occurred_on" name="occurred_on" value="<%= form['occurred_on'] %>" max="<%= today.iso8601 %>">
     </div>
   </div>
+  <input type="hidden" name="inbox_id" value="<%= form['inbox_id'] %>">
   <input type="hidden" name="external_ref" value="<%= form['external_ref'] %>">
   <button class="btn block" type="submit">Save</button>
   <p class="hint center">Don't log every Living cost if it's a chore. Check your MoMo balance now and then instead, and the gap is recorded for you.</p>

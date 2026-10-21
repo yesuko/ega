@@ -11,12 +11,15 @@ gem 'dotenv'
 gem 'logger'
 gem 'bigdecimal'
 gem 'sequel'
-gem 'pg'
+gem 'sqlite3'
 gem 'bcrypt'
 
 group :development do
-  # Lets you try the app with DATABASE_URL=sqlite://db/development.sqlite3
-  # before a Postgres database exists.
-  gem 'sqlite3'
   gem 'rerun'
+end
+
+group :test do
+  gem 'minitest'
+  gem 'rack-test'
+  gem 'rake'
 end

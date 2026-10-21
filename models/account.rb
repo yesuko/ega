@@ -1,7 +1,7 @@
 class Account < Sequel::Model
   many_to_one :user
 
-  KINDS = { 'bank' => 'Bank', 'momo' => 'Mobile money', 'cash' => 'Cash' }.freeze
+  KINDS = { 'bank' => 'Bank', 'momo' => 'MoMo', 'cash' => 'Cash' }.freeze
   ICONS = { 'bank' => :landmark, 'momo' => :smartphone, 'cash' => :banknote, 'investment' => :trending_up }.freeze
 
   def before_create

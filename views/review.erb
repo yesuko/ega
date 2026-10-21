@@ -1,11 +1,11 @@
 <% user = current_user %>
 <div class="monthnav">
-  <a class="icon-btn" href="/review?month=<%= (month << 1).strftime('%Y-%m') %>" aria-label="Previous month"><%== icon(:chevron_left) %></a>
+  <a class="btn small ghost" href="/review?month=<%= (month << 1).strftime('%Y-%m') %>"><%== icon(:chevron_left, size: 16) %><%= (month << 1).strftime('%b') %></a>
   <strong><%= month.strftime('%B %Y') %></strong>
   <% if month < this_month %>
-    <a class="icon-btn" href="/review?month=<%= (month >> 1).strftime('%Y-%m') %>" aria-label="Next month"><%== icon(:chevron_right) %></a>
+    <a class="btn small ghost" href="/review?month=<%= (month >> 1).strftime('%Y-%m') %>"><%= (month >> 1).strftime('%b') %><%== icon(:chevron_right, size: 16) %></a>
   <% else %>
-    <span class="icon-btn" style="visibility: hidden"></span>
+    <span class="btn small ghost" style="visibility: hidden"><%= month.strftime('%b') %></span>
   <% end %>
 </div>
 

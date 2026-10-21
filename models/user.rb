@@ -79,7 +79,14 @@ class User < Sequel::Model
   def validate
     super
     errors.add(:name, 'is required') if name.to_s.strip.empty?
-    errors.add(:email, 'is required') if email.to_s.strip.empty?
+    errors.add(:name, 'must be 60 characters or fewer') if name.to_s.length > 60
+    if email.to_s.strip.empty?
+      errors.add(:email, 'is required')
+    elsif !email.match?(/\A[^@\s]+@[^@\s]+\.[^@\s]+\z/)
+      errors.add(:email, "doesn't look like an email address")
+    elsif self.class.exclude(id: id).where(email: email.downcase).any?
+      errors.add(:email, 'already has an account')
+    end
     errors.add(:payday, 'must be a day from 1 to 31') if payday && !(1..31).cover?(payday)
     errors.add(:emergency_months, 'must be from 1 to 12') unless (1..12).cover?(emergency_months.to_i)
     errors.add(:cooling_hours, 'must be from 0 to 168') unless (0..168).cover?(cooling_hours.to_i)

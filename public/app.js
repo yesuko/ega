@@ -1,4 +1,4 @@
-// Money Plan: small enhancements on top of plain forms. Every page works
+// Ega: small enhancements on top of plain forms. Every page works
 // without this; it adds live previews and the add sheet.
 (function () {
   'use strict';
@@ -53,6 +53,17 @@
         var input = document.getElementById(button.dataset.fill);
         input.value = button.dataset.value;
         input.dispatchEvent(new Event('input'));
+      });
+    });
+
+    // Copies a read-only field (the SMS inbox link) to the clipboard.
+    each('[data-copy]', function (button) {
+      button.addEventListener('click', function () {
+        var input = document.getElementById(button.dataset.copy);
+        var done = function () { button.lastChild.textContent = 'Copied'; };
+        input.select();
+        if (navigator.clipboard) navigator.clipboard.writeText(input.value).then(done, function () { document.execCommand('copy'); done(); });
+        else { document.execCommand('copy'); done(); }
       });
     });
 

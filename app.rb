@@ -5,10 +5,11 @@ require 'json'
 require 'date'
 require 'time'
 require 'uri'
+require 'securerandom'
 require 'fileutils'
 require 'logger'
 
-Dotenv.overload(File.expand_path('.env', __dir__))
+Dotenv.overload(File.expand_path('.env', __dir__)) unless ENV['RACK_ENV'] == 'test'
 # Ghana time (GMT, no daylight saving) decides what "today" is.
 ENV['TZ'] = ENV.fetch('APP_TIMEZONE', 'Africa/Accra')
 
@@ -16,16 +17,21 @@ set :host_authorization, {}
 set :port, ENV.fetch('PORT', 4600)
 # Escape <%= %> output by default; trusted markup must opt in with <%== %>.
 set :erb, escape_html: true
-# Stay logged in on your phone for 30 days.
-set :sessions, key: 'money_plan.session', secret: ENV.fetch('SESSION_SECRET'), expire_after: 30 * 24 * 3600,
-               same_site: :lax, secure: ENV['APP_ENV'] == 'production'
+# Stay logged in on your phone for 30 days. In production (behind HTTPS) the
+# cookie is only ever sent over HTTPS.
+set :sessions, key: 'ega.session', secret: ENV.fetch('SESSION_SECRET'), expire_after: 30 * 24 * 3600,
+               same_site: :lax, secure: production?
 set :session_secret, ENV.fetch('SESSION_SECRET')
 
 LOG_FILE = File.expand_path('log/application.log', __dir__)
 FileUtils.mkdir_p(File.dirname(LOG_FILE))
-APP_LOGGER = Logger.new(LOG_FILE, 'daily')
+APP_LOGGER = ENV['RACK_ENV'] == 'test' ? Logger.new(File::NULL) : Logger.new(LOG_FILE, 'daily')
 
-DB = Sequel.connect(ENV.fetch('DATABASE_URL'))
+DB = Sequel.connect(ENV.fetch('DATABASE_URL')) unless defined?(DB)
+# Passenger can run several app processes against the one SQLite file: WAL lets
+# reads carry on during a write, and Sequel's sqlite adapter waits up to 5s for
+# a lock instead of failing.
+DB.run('PRAGMA journal_mode = WAL') if DB.database_type == :sqlite
 
 require_relative 'lib/money'
 require_relative 'lib/icons'
@@ -37,13 +43,19 @@ require_relative 'models/buy_item'
 require_relative 'models/investment'
 require_relative 'models/transaction'
 require_relative 'models/entry'
+require_relative 'models/inbox_message'
 require_relative 'lib/plan'
 require_relative 'lib/ledger'
 
 INCOME_SOURCES = ['Salary', 'Client work', 'Side job', 'Gift', 'Refund'].freeze
+# Sign-up is open to anyone; this stops one address creating accounts in bulk.
+SIGNUPS_PER_IP_PER_DAY = 5
+# A phone forwarding every SMS by mistake can't fill an inbox past this.
+INBOX_MESSAGES_PER_DAY = 300
 
 before do
-  APP_LOGGER.info("Request: #{request.request_method} #{request.path}")
+  # The SMS inbox token is a secret, so it stays out of the log.
+  APP_LOGGER.info("Request: #{request.request_method} #{request.path.sub(%r{\A/sms/[^/]+}, '/sms/[token]')}")
 end
 
 # Routes have no trailing slash, so send /buy/ (and the like) to /buy.
@@ -52,7 +64,8 @@ before %r{.+/} do
 end
 
 before do
-  redirect '/login' unless current_user || request.path_info == '/login'
+  public_path = %w[/login /signup].include?(request.path_info) || request.path_info.match?(%r{\A/sms/[^/]+\z})
+  redirect '/login' unless current_user || public_path
 end
 
 helpers do
@@ -155,6 +168,12 @@ helpers do
     if date.nil? then 'Choose a date.'
     elsif date > today then "The date can't be in the future."
     end
+  end
+
+  # A model's first validation error as a sentence: "Matures on must be after the start date".
+  def first_error(model)
+    attribute, messages = model.errors.first
+    attribute && "#{attribute.to_s.tr('_', ' ').capitalize} #{messages.first}"
   end
 
   def blank_to_nil(value)
@@ -260,6 +279,40 @@ post '/logout' do
   redirect '/login'
 end
 
+get '/signup' do
+  redirect '/' if current_user
+  @title = 'Create an account'
+  erb :signup, locals: { error: nil, form: {} }
+end
+
+post '/signup' do
+  form = params.slice('name', 'email')
+  password = params[:password].to_s
+  user = User.new(name: form['name'].to_s.strip, email: form['email'].to_s.strip.downcase, signup_ip: request.ip)
+  recent = User.where(signup_ip: request.ip).where(Sequel[:created_at] > Time.now - 86_400).count
+  # "website" is a hidden field people never see; bots fill it in.
+  error = if !params[:website].to_s.empty? || recent >= SIGNUPS_PER_IP_PER_DAY then "Sign-up isn't available right now. Try again later."
+          elsif !user.valid? then first_error(user)
+          elsif password.length < 8 then 'Use at least 8 characters for your password.'
+          elsif password.bytesize > 72 then 'Use a password of 72 characters or fewer.'
+          elsif password != params[:confirm].to_s then "The passwords don't match."
+          end
+  if error
+    APP_LOGGER.warn("Sign-up refused from #{request.ip}: #{error}")
+    @title = 'Create an account'
+    status 422
+    return erb :signup, locals: { error: error, form: form }
+  end
+
+  user.password = password
+  user.save
+  APP_LOGGER.info("Sign-up: user #{user.id} from #{request.ip}")
+  session.clear
+  session[:user_id] = user.id
+  notice 'success', "Welcome, #{user.first_name}. Start by entering what you have today."
+  redirect '/'
+end
+
 # --- Home ---------------------------------------------------------------------
 
 get '/' do
@@ -268,7 +321,8 @@ get '/' do
     cooled: plan.cooled_items, maturities: plan.maturities, emergency: plan.emergency,
     buy: plan.buy_list, overdrawn: plan.overdrawn,
     recent: Transaction.where(user_id: current_user.id).latest_first.limit(5).eager(entries: [:pot, :account]).all,
-    started: Transaction.where(user_id: current_user.id).any?
+    started: Transaction.where(user_id: current_user.id).any?,
+    inbox_count: InboxMessage.where(user_id: current_user.id, status: 'pending').count
   }
 end
 
@@ -310,12 +364,13 @@ get '/income/new' do
   income_page({
     'amount' => params[:amount], 'account_id' => (params[:account_id] || default_account_id('income')).to_s,
     'occurred_on' => params[:on] || today.iso8601, 'source' => params[:source], 'note' => params[:note],
-    'mode' => 'split', 'pot_id' => current_user.pot('living').id.to_s, 'external_ref' => params[:ref]
+    'mode' => 'split', 'pot_id' => current_user.pot('living').id.to_s, 'external_ref' => params[:ref],
+    'inbox_id' => params[:inbox]
   })
 end
 
 post '/income' do
-  form = params.slice('amount', 'account_id', 'occurred_on', 'source', 'note', 'mode', 'pot_id', 'external_ref')
+  form = params.slice('amount', 'account_id', 'occurred_on', 'source', 'note', 'mode', 'pot_id', 'external_ref', 'inbox_id')
   amount = Money.parse(form['amount'])
   account = find_account(form['account_id'])
   on = parse_date(form['occurred_on'])
@@ -331,6 +386,7 @@ post '/income' do
   overflow = pot ? 0 : plan.split(amount, on)[:overflow]
   txn = ledger.income(amount: amount, account: account, on: on, source: blank_to_nil(form['source']),
                       note: blank_to_nil(form['note']), pot: pot, external_ref: blank_to_nil(form['external_ref']))
+  close_inbox_message(form['inbox_id'], txn)
   parts = txn.entries.map { |e| "#{e.pot.name} #{Money.format(e.amount, short: true)}" }.join(' · ')
   covered = " #{current_user.pot('living').name}'s target for the month is met, so #{cedis(overflow, short: true)} of its share went to #{current_user.pot('future').name}." if overflow.positive?
   notice 'success', "#{cedis(amount)} in. #{parts}.#{covered}"
@@ -352,12 +408,13 @@ get '/spend/new' do
   spend_page({
     'amount' => params[:amount], 'pot_id' => (params[:pot_id] || current_user.pot('enjoy').id).to_s,
     'account_id' => (params[:account_id] || default_account_id('spend')).to_s,
-    'occurred_on' => params[:on] || today.iso8601, 'note' => params[:note], 'external_ref' => params[:ref]
+    'occurred_on' => params[:on] || today.iso8601, 'note' => params[:note], 'external_ref' => params[:ref],
+    'inbox_id' => params[:inbox]
   })
 end
 
 post '/spend' do
-  form = params.slice('amount', 'pot_id', 'account_id', 'occurred_on', 'note', 'external_ref')
+  form = params.slice('amount', 'pot_id', 'account_id', 'occurred_on', 'note', 'external_ref', 'inbox_id')
   amount = Money.parse(form['amount'])
   pot = find_pot(form['pot_id'])
   account = find_account(form['account_id'])
@@ -369,8 +426,9 @@ post '/spend' do
           end
   return spend_page(form, error: error) if error
 
-  ledger.spend(amount: amount, pot: pot, account: account, on: on, note: blank_to_nil(form['note']),
-               external_ref: blank_to_nil(form['external_ref']))
+  txn = ledger.spend(amount: amount, pot: pot, account: account, on: on, note: blank_to_nil(form['note']),
+                     external_ref: blank_to_nil(form['external_ref']))
+  close_inbox_message(form['inbox_id'], txn)
   message = "Spent #{cedis(amount)} from #{pot.name}."
   if pot.kind == 'enjoy' && on == today
     left = Plan.new(current_user).safe_to_spend[:left]
@@ -396,12 +454,13 @@ get '/move/new' do
   parts[params[:pot_id].to_s] = params[:amount] if params[:pot_id]
   move_page({
     'from_id' => params[:from].to_s, 'to_id' => params[:to].to_s, 'parts' => parts, 'fee' => '',
-    'fee_pot_id' => current_user.pot('living').id.to_s, 'occurred_on' => today.iso8601, 'note' => ''
+    'fee_pot_id' => current_user.pot('living').id.to_s, 'occurred_on' => today.iso8601, 'note' => '',
+    'inbox_id' => params[:inbox]
   })
 end
 
 post '/move' do
-  form = params.slice('from_id', 'to_id', 'fee', 'fee_pot_id', 'occurred_on', 'note')
+  form = params.slice('from_id', 'to_id', 'fee', 'fee_pot_id', 'occurred_on', 'note', 'inbox_id')
   form['parts'] = (params[:parts] || {}).to_h
   from = find_account(form['from_id'])
   to = find_account(form['to_id'])
@@ -421,7 +480,8 @@ post '/move' do
   return move_page(form, error: error) if error
 
   parts.reject! { |_, value| value.zero? }
-  ledger.move(parts: parts, from: from, to: to, on: on, note: blank_to_nil(form['note']), fee: fee, fee_pot: fee_pot)
+  txn = ledger.move(parts: parts, from: from, to: to, on: on, note: blank_to_nil(form['note']), fee: fee, fee_pot: fee_pot)
+  close_inbox_message(form['inbox_id'], txn)
   notice 'success', "Moved #{cedis(parts.values.sum)} from #{from.name} to #{to.name}."
   redirect '/'
 end
@@ -639,7 +699,7 @@ post '/buy' do
   else
     item.set(status: 'cooling', cooling_until: Time.now + (hours * 3600))
   end
-  return buy_page(form: form, error: item.errors.full_messages.first) unless item.valid?
+  return buy_page(form: form, error: first_error(item)) unless item.valid?
 
   item.save
   notice 'success', if item.status == 'listed' then "#{item.name} is on your list."
@@ -667,7 +727,7 @@ post '/buy/:id' do
   @title = 'Edit item'
   @back = '/buy'
   status 422
-  erb :buy_edit, locals: { item: item, form: form, error: item.errors.full_messages.first }
+  erb :buy_edit, locals: { item: item, form: form, error: first_error(item) }
 end
 
 post '/buy/:id/approve' do
@@ -830,7 +890,7 @@ post '/invest' do
   error = if !amount&.positive? then 'Enter the amount invested, like 5000 or 5,000.00.'
           elsif !held && from.nil? then 'Choose where the money came from.'
           elsif rate_error then rate_error
-          elsif !investment.valid? then investment.errors.full_messages.first
+          elsif !investment.valid? then first_error(investment)
           else date_error(investment.started_on)
           end
   return investment_form_page(form, error: error) if error
@@ -856,7 +916,7 @@ post '/invest/:id' do
   investment = find_investment!
   form = params.slice('kind', 'name', 'provider', 'rate', 'started_on', 'matures_on', 'emergency', 'note')
   rate_error = assign_investment(investment, form)
-  error = rate_error || (investment.valid? ? nil : investment.errors.full_messages.first)
+  error = rate_error || (investment.valid? ? nil : first_error(investment))
   return investment_form_page(form, error: error, investment: investment) if error
 
   investment.save
@@ -957,24 +1017,153 @@ post '/import' do
     return erb :import, locals: { text: text, result: nil, error: "I couldn't find an amount in that message. Paste the whole SMS, including the GHS amount." }
   end
 
-  kind = result.dig(:network, :kind)
-  account = current_user.cash_accounts.find { |a| a.kind == kind } || find_account(default_account_id('spend'))
-  who = result[:counterparty]
-  detail = [result[:reference], result[:description]].compact.first
-  income_note = [who && "From #{who}", detail].compact.join(' · ')
-  spent = result[:amount] + result[:fee]
-  spend_note = [who && "To #{who}", detail, result[:fee].positive? ? "incl. #{cedis(result[:fee])} fee" : nil].compact.join(' · ')
-  common = { account_id: account&.id, on: result[:on]&.iso8601, ref: result[:ref_id] }.compact
+  message = InboxMessage.from_sms(current_user, text)
+  account = sms_account(message.account_kind)
   erb :import, locals: {
-    text: text, result: result, error: nil, account: account,
-    duplicate: result[:ref_id] && Transaction.where(user_id: current_user.id, external_ref: result[:ref_id]).first,
-    links: {
-      income: "/income/new?#{URI.encode_www_form(common.merge(amount: Money.input(result[:amount]), note: income_note))}",
-      spend: "/spend/new?#{URI.encode_www_form(common.merge(amount: Money.input(spent), note: spend_note))}",
-      move: "/move/new?#{URI.encode_www_form(from: account&.id)}",
+    text: text, result: result, error: nil, account: account, duplicate: message.saved_already,
+    links: inbox_links(message, account).merge(
       check: result[:balance] && "/check/new?#{URI.encode_www_form(account_id: account&.id, actual: Money.input(result[:balance]))}"
-    }
+    )
   }
+end
+
+# --- SMS inbox ----------------------------------------------------------------
+
+helpers do
+  def find_message!
+    InboxMessage.first(id: params[:id].to_i, user_id: current_user.id) || halt(404, 'Not found')
+  end
+
+  # The account an SMS most likely belongs to: the first MoMo or bank account,
+  # going by its wording, else the usual one.
+  def sms_account(kind)
+    current_user.cash_accounts.find { |a| a.kind == kind } || find_account(default_account_id('spend'))
+  end
+
+  # Prefilled forms for an SMS, to change it before saving. A saved inbox
+  # message rides along so saving the form marks it recorded.
+  def inbox_links(message, account)
+    common = { account_id: account&.id, on: message.occurred_on.iso8601, ref: message.ref_id, inbox: message.id }.compact
+    notes = message.notes
+    {
+      income: "/income/new?#{URI.encode_www_form(common.merge(amount: Money.input(message.amount), note: notes[:in]))}",
+      spend: "/spend/new?#{URI.encode_www_form(common.merge(amount: Money.input(message.spent), note: notes[:out]))}",
+      move: "/move/new?#{URI.encode_www_form({ from: account&.id, inbox: message.id }.compact)}"
+    }
+  end
+
+  # Marks the inbox message an entry was made from as recorded.
+  def close_inbox_message(id, txn)
+    return if id.to_s.empty?
+
+    InboxMessage.first(id: id.to_i, user_id: current_user.id, status: 'pending')&.update(status: 'recorded', transaction_id: txn.id)
+  end
+
+  def inbox_url(token)
+    "#{request.base_url}/sms/#{token}"
+  end
+
+  # The SMS a phone automation sent: a "text" field (form or JSON), or the
+  # whole body when it came as plain text.
+  def posted_sms
+    request.body.rewind
+    raw = request.body.read.to_s
+    data = request.media_type == 'application/json' ? (JSON.parse(raw) rescue nil) : nil
+    data = {} unless data.is_a?(Hash)
+    text = params['text'] || params['message'] || data['text'] || data['message']
+    text ||= raw unless request.media_type.to_s.match?(/form-urlencoded|multipart/)
+    [text.to_s.strip[0, 2000], (params['from'] || data['from']).to_s.strip[0, 40]]
+  end
+end
+
+# Where a phone sends money SMS (see /inbox/setup). The token in the address is
+# the only key: no login, and plain-text replies for the automation's log.
+post '/sms/:token' do
+  content_type 'text/plain'
+  token = params[:token].to_s
+  user = token.length >= 24 ? User.first(inbox_token: token) : nil
+  halt 404, 'Unknown inbox link.' unless user
+  text, sender = posted_sms
+  halt 400, 'No message text.' if text.empty?
+  messages = InboxMessage.where(user_id: user.id)
+  halt 429, 'Too many messages today.' if messages.where(Sequel[:created_at] > Time.now - 86_400).count >= INBOX_MESSAGES_PER_DAY
+
+  message = InboxMessage.from_sms(user, text, sender: blank_to_nil(sender))
+  halt 200, 'Ignored: no amount in this message, so it was not kept.' unless message
+  repeat = messages.where(body: text).where(Sequel[:created_at] > Time.now - 86_400).any? ||
+           (message.ref_id && (messages.where(ref_id: message.ref_id).any? || message.saved_already))
+  halt 200, 'Already received.' if repeat
+
+  message.save
+  APP_LOGGER.info("SMS inbox: message #{message.id} for user #{user.id}")
+  status 201
+  "Saved #{cedis(message.amount)}. Confirm it in Ega."
+end
+
+get '/inbox' do
+  @title = 'SMS inbox'
+  @back = '/'
+  messages = InboxMessage.where(user_id: current_user.id)
+  erb :inbox, locals: { pending: messages.pending.all, done: messages.done.limit(15).all }
+end
+
+get '/inbox/setup' do
+  @title = 'Set up the SMS inbox'
+  @back = '/inbox'
+  erb :inbox_setup, locals: { last: InboxMessage.where(user_id: current_user.id).order(Sequel.desc(:id)).first }
+end
+
+post '/inbox/token' do
+  renewing = !current_user.inbox_token.nil?
+  current_user.update(inbox_token: SecureRandom.urlsafe_base64(24))
+  notice 'success', renewing ? 'New link made. Put it in your phone; the old one no longer works.' : 'Your private link is ready. Put it in your phone.'
+  redirect '/inbox/setup'
+end
+
+post '/inbox/token/delete' do
+  current_user.update(inbox_token: nil)
+  notice 'success', 'SMS inbox turned off. The old link no longer works.'
+  redirect '/inbox/setup'
+end
+
+post '/inbox/:id/record' do
+  message = find_message!
+  redirect '/inbox' unless message.status == 'pending'
+  as = %w[in out].include?(params[:as]) ? params[:as] : message.direction
+  account = find_account(params[:account_id])
+  pot = find_pot(params[:pot_id])
+  error = if as.nil? then 'Choose whether it was money in or money out.'
+          elsif account.nil? then 'Choose the account.'
+          elsif as == 'out' && pot.nil? then 'Choose the pot the spending came from.'
+          end
+  if error
+    notice 'error', error
+    redirect "/inbox#m-#{message.id}"
+  end
+
+  notes = message.notes
+  txn = if as == 'in'
+          ledger.income(amount: message.amount, account: account, on: message.occurred_on,
+                        note: blank_to_nil(notes[:in]), external_ref: message.ref_id)
+        else
+          ledger.spend(amount: message.spent, pot: pot, account: account, on: message.occurred_on,
+                       note: blank_to_nil(notes[:out]), external_ref: message.ref_id)
+        end
+  message.update(status: 'recorded', transaction_id: txn.id)
+  notice 'success', as == 'in' ? "Split #{cedis(message.amount)} across your pots." : "Saved #{cedis(message.spent)} from #{pot.name}."
+  redirect '/inbox'
+end
+
+post '/inbox/:id/dismiss' do
+  message = find_message!
+  message.update(status: 'dismissed') if message.status == 'pending'
+  redirect '/inbox'
+end
+
+post '/inbox/:id/restore' do
+  message = find_message!
+  message.update(status: 'pending') if message.status == 'dismissed'
+  redirect '/inbox'
 end
 
 # --- Settings -----------------------------------------------------------------
@@ -997,7 +1186,7 @@ post '/settings/plan' do
     user.save
     notice 'success', 'Plan saved.'
   else
-    notice 'error', user.errors.full_messages.first
+    notice 'error', first_error(user)
   end
   redirect '/settings#plan'
 end
@@ -1013,7 +1202,7 @@ post '/settings/pots' do
   total = pots.sum(&:percent)
   invalid = pots.find { |pot| !pot.valid? }
   if invalid
-    notice 'error', "#{invalid.name.empty? ? 'A pot' : invalid.name}: #{invalid.errors.full_messages.first}"
+    notice 'error', "#{invalid.name.empty? ? 'A pot' : invalid.name}: #{first_error(invalid).sub(/\A./, &:downcase)}"
   elsif total != 100
     notice 'error', "The shares add up to #{total}%. They need to add up to 100%."
   else
@@ -1029,7 +1218,7 @@ post '/settings/accounts' do
     account.save
     notice 'success', "Added #{account.name}."
   else
-    notice 'error', account.errors.full_messages.first || 'Choose bank, MoMo or cash.'
+    notice 'error', first_error(account) || 'Choose bank, MoMo or cash.'
   end
   redirect '/settings#accounts'
 end
@@ -1042,7 +1231,7 @@ post '/settings/accounts/:id' do
     account.save
     notice 'success', 'Saved.'
   else
-    notice 'error', account.errors.full_messages.first
+    notice 'error', first_error(account)
   end
   redirect '/settings#accounts'
 end
@@ -1073,13 +1262,11 @@ end
 post '/settings/profile' do
   user = current_user
   user.set(name: params[:name].to_s.strip, email: params[:email].to_s.strip.downcase)
-  if User.exclude(id: user.id).where(email: user.email).any?
-    notice 'error', 'Another user has that email.'
-  elsif user.valid?
+  if user.valid?
     user.save
     notice 'success', 'Saved.'
   else
-    notice 'error', user.errors.full_messages.first
+    notice 'error', first_error(user)
   end
   redirect '/settings#profile'
 end
@@ -1101,7 +1288,19 @@ post '/settings/password' do
 end
 
 not_found do
+  return body if request.path_info.start_with?('/sms/')
+
   @title = 'Not found'
   @back = '/'
   erb :not_found
+end
+
+# In production, visitors see this instead of a backtrace; the details go to
+# log/application.log.
+error do
+  failure = env['sinatra.error']
+  APP_LOGGER.error("#{failure.class}: #{failure.message}\n#{failure.backtrace&.first(15)&.join("\n")}")
+  @title = 'Something went wrong'
+  @back = '/'
+  erb :error
 end

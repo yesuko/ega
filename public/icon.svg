@@ -1,6 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Ega's mark: a cowrie (money) with a sprout growing from it. -->
   <rect width="512" height="512" rx="112" fill="#12804a"/>
-  <circle cx="256" cy="268" r="144" fill="#ffffff"/>
-  <path d="M256 268 L256 124 A144 144 0 0 1 392.95 223.5 Z" fill="#12804a"/>
-  <path d="M276 242 L276 98 A144 144 0 0 1 412.95 197.5 Z" fill="#a7e3c1"/>
+  <path d="M256 200 V146" stroke="#fff" stroke-width="22" stroke-linecap="round" fill="none"/>
+  <path d="M256 176 C222 178 192 156 184 120 C222 114 252 140 256 176 Z" fill="#a7e3c1"/>
+  <path d="M256 158 C262 114 294 84 338 80 C340 126 306 156 256 158 Z" fill="#a7e3c1"/>
+  <ellipse cx="256" cy="322" rx="100" ry="126" fill="#fff"/>
+  <path d="M256 214 C240 270 238 370 254 430 C262 370 266 270 256 214 Z" fill="#12804a"/>
+  <path d="M236 244 H248 M262 244 H274 M233 264 H245 M263 264 H275 M231 284 H243 M263 284 H275 M230 304 H242 M263 304 H275 M230 324 H242 M263 324 H275 M230 344 H242 M262 344 H274 M231 364 H243 M261 364 H273 M233 384 H245 M260 384 H272 M236 404 H248 M258 404 H270" stroke="#12804a" stroke-width="7" stroke-linecap="round"/>
 </svg>

@@ -53,6 +53,7 @@
       <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="120" placeholder="Optional">
     </div>
   </div>
+  <input type="hidden" name="inbox_id" value="<%= form['inbox_id'] %>">
   <input type="hidden" name="external_ref" value="<%= form['external_ref'] %>">
   <button class="btn block" type="submit">Save and split</button>
 </form>

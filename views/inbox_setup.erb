@@ -1,0 +1,60 @@
+<% token = current_user.inbox_token %>
+<% if token.nil? %>
+  <div class="card">
+    <h2>Forward money SMS to Ega</h2>
+    <p class="small muted">Ega can't read your messages itself. Instead, an automation on your phone sends each MoMo or bank SMS to a private link, and it waits in your inbox for you to confirm. No more copying and pasting.</p>
+    <form method="post" action="/inbox/token">
+      <button class="btn block" type="submit">Make my private link</button>
+    </form>
+  </div>
+<% else %>
+  <div class="card">
+    <h2>Your private link</h2>
+    <p class="small muted">Your phone sends money SMS here. Keep it to yourself: anyone with it could add messages to your inbox (they can't see anything in Ega).</p>
+    <div class="field" style="margin: 10px 0">
+      <input type="text" id="inbox-url" value="<%= inbox_url(token) %>" readonly aria-label="Your private SMS inbox link" style="font-size: 14px">
+    </div>
+    <div class="buttons">
+      <button class="btn small" type="button" data-copy="inbox-url"><%== icon(:link, size: 16) %>Copy link</button>
+      <form method="post" action="/inbox/token" class="inline-form" data-confirm="Make a new link? The old one stops working, so you'll need to update your phone.">
+        <button class="btn small ghost" type="submit">New link</button>
+      </form>
+      <form method="post" action="/inbox/token/delete" class="inline-form" data-confirm="Turn off the SMS inbox? The link stops working.">
+        <button class="btn small ghost" type="submit">Turn off</button>
+      </form>
+    </div>
+    <p class="small muted" style="margin: 12px 0 0">
+      <% if last %>
+        Last SMS received: <%= day_label(last.created_at.to_date) %> at <%= last.created_at.strftime('%H:%M') %>.
+      <% else %>
+        Nothing received yet. Once your phone is set up, the next money SMS shows up in the <a href="/inbox">inbox</a>.
+      <% end %>
+    </p>
+  </div>
+
+  <h2 class="section">Android: MacroDroid</h2>
+  <div class="card prose">
+    <p class="small">MacroDroid is a free Play Store app that runs "when this happens, do that" automations. Here: when a money SMS arrives, send it to your link.</p>
+    <ol class="small">
+      <li>Install <strong>MacroDroid</strong> from the Play Store, open it and allow SMS access when asked.</li>
+      <li>Tap <strong>Add Macro</strong>.</li>
+      <li><strong>Trigger:</strong> <em>Call/SMS → SMS Received</em>. Choose <em>Any number</em>, and for the message content choose <em>Contains</em> and type <code>GHS</code>.</li>
+      <li><strong>Action:</strong> <em>Connectivity → HTTP Request</em>. Method <strong>POST</strong>, URL: paste your link. Under the body, choose content type <strong>text/plain</strong> and insert the magic text <strong>[sms_message]</strong> (the SMS text).</li>
+      <li>Name the macro "Ega" and save it. The next MoMo or bank SMS appears in your inbox within seconds.</li>
+    </ol>
+    <p class="hint">Menu names can differ a little between MacroDroid versions. If your bank writes amounts as GH¢ or GHC, add another macro (or trigger) for that.</p>
+  </div>
+
+  <h2 class="section">iPhone: Shortcuts</h2>
+  <div class="card prose">
+    <ol class="small">
+      <li>Open <strong>Shortcuts</strong>, tap <strong>Automation</strong>, then <strong>+</strong> and choose <strong>Message</strong>.</li>
+      <li>Set <em>Message Contains</em> to <code>GHS</code> (you can pick the sender too), choose <strong>Run Immediately</strong>, then <strong>Next</strong>.</li>
+      <li>Add the action <strong>Get Contents of URL</strong>. URL: paste your link. Tap the arrow: Method <strong>POST</strong>, Request Body <strong>Form</strong>, add a text field named <code>text</code> and set its value to <strong>Shortcut Input</strong> (the message content).</li>
+      <li>Tap <strong>Done</strong>. Matching SMS now go to your inbox.</li>
+    </ol>
+    <p class="hint">Apple doesn't let any app read SMS, so this automation is the only way on iPhone. Older iOS versions may ask before each run.</p>
+  </div>
+
+  <p class="hint" style="margin: 0 4px">Only messages with an amount are kept; anything else your phone sends is ignored. Repeats are skipped, and nothing is saved until you confirm it.</p>
+<% end %>

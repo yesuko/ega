@@ -49,10 +49,21 @@
   <a href="/import"><%== icon(:message, size: 22) %>Paste SMS</a>
 </nav>
 
-<% todo_count = moves.size + unbanked.size + cooled.size + maturities.size + overdrawn.size %>
+<% todo_count = (inbox_count.positive? ? 1 : 0) + moves.size + unbanked.size + cooled.size + maturities.size + overdrawn.size %>
 <% if todo_count.positive? %>
   <h2 class="section">To do <span><%= todo_count %></span></h2>
   <div class="card">
+    <% if inbox_count.positive? %>
+      <div class="todo">
+        <span class="badge"><%== icon(:message) %></span>
+        <div class="grow">
+          <div class="title"><%= inbox_count %> SMS to confirm</div>
+          <div class="sub">Money your phone forwarded. Check each one and save it with a tap.</div>
+          <div class="do"><a class="btn small" href="/inbox">Open the inbox</a></div>
+        </div>
+      </div>
+    <% end %>
+
     <% moves.each do |move| %>
       <div class="todo">
         <span class="badge"><%== icon(:arrow_left_right) %></span>

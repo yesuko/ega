@@ -1,12 +1,12 @@
-# Ega — Money Plan
+# Ega
 
 A phone-first web app for personal money: split every income the moment it
 arrives, spend the Enjoy share without guilt, fill a Buy List, build an
 emergency fund and keep track of investments. Money can sit in a bank account,
 MoMo or cash.
 
-Sinatra + Sequel + PostgreSQL (SQLite works for trying it out). It installs to
-a phone's home screen as a web app.
+Sinatra + Sequel + SQLite, served by Passenger at https://ega.anmgw.com. It
+installs to a phone's home screen as a web app.
 
 ## How it works
 
@@ -39,6 +39,12 @@ holds what is invested.
   as quick to withdraw count towards the emergency fund.
 - **Paste an SMS**: reads MTN MoMo, Telecel Cash, AT Money and bank alerts into
   a prefilled entry, and warns about repeats by transaction ID.
+- **SMS inbox**: each user can make a private link (`/inbox/setup`) that their
+  phone forwards money SMS to: MacroDroid on Android, Shortcuts on iPhone (a
+  website can't read SMS itself). `POST /sms/<token>` takes the text as a `text`
+  form or JSON field, or as a plain-text body. Only messages with an amount are
+  kept, repeats are skipped, and each waits in `/inbox` until confirmed: money
+  in splits with one tap, spending needs a pot. The token never appears in the log.
 - **Monthly review**, **Activity** (filter by month, pot, account, type) and
   **Investing in Ghana** (a short guide with red flags).
 
@@ -50,54 +56,80 @@ so deleting them puts the item or investment back.
 
 ## Setup
 
-### 1. Ruby
-
 ```bash
-rvm use ruby-4.0.5@money_plan --create
+cd /opt/yesuko/webapps/ega
+rvm use ruby-4.0.5@ega --create
 bundle install
-```
-
-### 2. Database
-
-To try it out, a SQLite file is enough (the default in `.env.example`).
-
-On the server, use Postgres (port 4044 here). Create a role and database
-(needs sudo):
-
-```bash
-GENPASS=$(openssl rand -hex 24)
-sudo -u postgres psql -p 4044 -c "CREATE ROLE money_plan LOGIN PASSWORD '${GENPASS}';"
-sudo -u postgres psql -p 4044 -c "CREATE DATABASE money_plan OWNER money_plan;"
-echo "DATABASE_URL=postgres://money_plan:${GENPASS}@localhost:4044/money_plan"
-```
-
-### 3. `.env`
-
-```bash
-cp .env.example .env
-```
-
-Set `DATABASE_URL` and a `SESSION_SECRET` of at least 64 characters
-(`ruby -rsecurerandom -e "puts SecureRandom.hex(48)"`). Behind HTTPS, set
-`APP_ENV=production` so the login cookie is only sent over HTTPS.
-
-### 4. Tables and a login
-
-```bash
+cp .env.example .env          # then set SESSION_SECRET (64+ characters):
+ruby -rsecurerandom -e "puts SecureRandom.hex(48)"
 bundle exec ruby bin/migrate.rb
 bundle exec ruby bin/create_user.rb "Your Name" you@example.com 'a-long-password'
 ```
 
-Running `create_user.rb` again with the same email resets the password.
+Anyone can also create an account at `/signup`. Each gets their own accounts,
+pots and data. A hidden field catches form-filling bots, and one IP address can
+create at most 5 accounts a day (`SIGNUPS_PER_IP_PER_DAY` in `app.rb`).
 
-## Running
+There is no self-service password reset yet: running `create_user.rb` with an
+existing email sets a new password for that account.
 
-```bash
-bundle exec rackup -p 4600 -o 127.0.0.1
+The database is the single file `db/ega.sqlite3` (WAL mode, so you'll also see
+`-wal` and `-shm` files next to it). Don't delete those while the app runs.
+
+## Serving it
+
+nginx + Passenger (`/etc/nginx/sites-available/ega.conf`):
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name ega.anmgw.com;
+    include /etc/nginx/ssl/cert.conf;
+
+    rails_env production;
+    root /opt/yesuko/webapps/ega/public;
+    passenger_enabled on;
+    passenger_ruby /home/yesuko/.rvm/wrappers/ruby-4.0.5@ega/ruby;
+}
 ```
 
-Open http://localhost:4600 (from VS Code Remote-SSH, forward port 4600 in the
-Ports tab). Log in, then **Starting balances** records what you hold today.
+In production the login cookie is HTTPS-only, templates are cached and errors
+show a friendly page (details in `log/application.log`).
+
+- After code changes: `touch tmp/restart.txt`
+- After pulling new migrations: `bundle exec ruby bin/migrate.rb`, then restart.
+- nginx serves `public/` itself, so the app folder must be readable by others
+  (except `.env`, the database and logs):
+  `find . \( -name .env -o -name '*.sqlite3*' -o -path ./log -o -path ./.git \) -prune -o -exec chmod o+rX {} +`
+
+To run it without Passenger: `bundle exec rackup -p 4600 -o 127.0.0.1` (development
+mode; open http://localhost:4600, forwarding port 4600 from VS Code).
+
+## Backups
+
+`bin/backup.sh` copies the database to `~/backups/ega` (safe while the app runs)
+and keeps the newest 30. To run it daily at 02:15:
+
+```bash
+(crontab -l 2>/dev/null; echo '15 2 * * * /opt/yesuko/webapps/ega/bin/backup.sh >/dev/null') | crontab -
+```
+
+To restore a backup (safe while the app runs), then restart:
+
+```bash
+sqlite3 db/ega.sqlite3 ".restore '/home/yesuko/backups/ega/ega-2026-10-21-0215.sqlite3'"
+touch tmp/restart.txt
+```
+
+## Tests
+
+```bash
+bundle exec rake test
+```
+
+They test the money logic (split, safe to spend, suggested moves, Buy List,
+emergency fund, ledger writes and undo, investments, SMS reading) against an
+in-memory database, so they never touch real data.
 
 ## Layout
 
@@ -111,5 +143,6 @@ models/             Sequel models
 views/              ERB templates
 public/             CSS, JS, PWA manifest, service worker, icons
 db/migrate/         Sequel migrations
-bin/                migrate.rb, create_user.rb
+bin/                migrate.rb, create_user.rb, backup.sh
+test/               Minitest tests
 ```

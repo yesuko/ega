@@ -36,6 +36,15 @@ module SmsParser
     }
   end
 
+  # Notes for the entry an SMS becomes, as money in and as money out: who it
+  # was from or to, its reference, and any fee included in the amount spent.
+  def notes(counterparty:, detail:, fee:)
+    {
+      in: [counterparty && "From #{counterparty}", detail].compact.join(' · '),
+      out: [counterparty && "To #{counterparty}", detail, fee.positive? ? "incl. GH₵ #{Money.format(fee)} fee" : nil].compact.join(' · ')
+    }
+  end
+
   # :in or :out, from whichever keyword comes first; nil when neither appears.
   def direction(text)
     incoming = text =~ INCOMING

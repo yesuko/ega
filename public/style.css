@@ -1,4 +1,4 @@
-/* Money Plan. Phone first: one column, a tab bar at the bottom, one green for
+/* Ega. Phone first: one column, a tab bar at the bottom, one green for
    actions, and a colour per pot so Future Me, Buy List, Living and Enjoy are
    recognisable at a glance. Follows the phone's light or dark setting. */
 
@@ -479,6 +479,7 @@ details.fold[open] > summary { margin-bottom: 14px; }
 .prose ul, .prose ol { padding-left: 20px; margin: 0 0 10px; }
 .prose li + li { margin-top: 4px; }
 
+.hp { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
 .login { min-height: 80vh; display: flex; flex-direction: column; justify-content: center; padding-top: 30px; }
 .logo {
   display: grid;

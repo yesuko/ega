@@ -1,7 +1,7 @@
-// Lets Money Plan install as an app and shows a friendly page when offline.
+// Lets Ega install as an app and shows a friendly page when offline.
 // Pages hold your money data, so they are never cached: only the offline
 // page and what it needs.
-var CACHE = 'money-plan-v1';
+var CACHE = 'ega-v2';
 var OFFLINE = ['/offline.html', '/style.css', '/icon.svg'];
 
 self.addEventListener('install', function (event) {

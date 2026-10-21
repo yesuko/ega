@@ -1,0 +1,85 @@
+<div class="between" style="margin: 0 4px 14px; align-items: flex-start">
+  <p class="muted small" style="margin: 0">Money SMS your phone forwards land here. Check each one and save it.</p>
+  <a class="btn small ghost" href="/inbox/setup" style="flex: none; white-space: nowrap"><%== icon(:settings, size: 16) %>Set up</a>
+</div>
+
+<% if current_user.inbox_token.nil? %>
+  <div class="callout"><%== icon(:smartphone, size: 18) %><span>Your phone isn't forwarding SMS yet. <a href="/inbox/setup">Set it up</a> once, with MacroDroid on Android or Shortcuts on iPhone.</span></div>
+<% end %>
+
+<% if pending.empty? %>
+  <div class="card empty">Nothing to confirm.<% if current_user.inbox_token %> New money SMS will show up here.<% end %></div>
+<% end %>
+
+<% pending.each do |message| %>
+  <% account = sms_account(message.account_kind) %>
+  <% links = inbox_links(message, account) %>
+  <% notes = message.notes %>
+  <% saved = message.saved_already %>
+  <form method="post" action="/inbox/<%= message.id %>/record" class="card" id="m-<%= message.id %>">
+    <div class="between" style="align-items: flex-start">
+      <div class="grow">
+        <div class="muted small" style="font-weight: 600"><%= message.network || 'SMS' %> · <%= message.money_in? ? 'money in' : message.money_out? ? 'money out' : 'in or out?' %> · <%= short_date(message.occurred_on) %></div>
+        <div style="font-size: 26px; font-weight: 750" class="<%= 'pos' if message.money_in? %>"><%= cedis(message.money_out? ? message.spent : message.amount) %></div>
+        <% note = message.money_out? ? notes[:out] : notes[:in] %>
+        <% unless note.empty? %><div class="small muted"><%= note %></div><% end %>
+      </div>
+      <span class="badge <%= 'c-muted' if message.money_out? %>"><%== icon(message.money_out? ? :arrow_up_right : :arrow_down_left) %></span>
+    </div>
+
+    <% if saved %>
+      <div class="callout warn" style="margin: 12px 0 0"><%== icon(:alert, size: 18) %><span>You already saved this on <%= short_date(saved.occurred_on) %>. <a href="/transactions/<%= saved.id %>">Look at it</a>, then tap Not needed.</span></div>
+    <% end %>
+
+    <div class="field" style="margin: 14px 0 12px">
+      <span class="label">Account</span>
+      <%== erb :_account_chips, layout: false, locals: { name: 'account_id', selected: account&.id } %>
+    </div>
+    <% unless message.money_in? %>
+      <div class="field" style="margin-bottom: 14px">
+        <span class="label"><%= message.money_out? ? 'From pot' : 'If it was spending, from pot' %></span>
+        <%== erb :_pot_chips, layout: false, locals: { name: 'pot_id', selected: nil } %>
+      </div>
+    <% end %>
+
+    <div class="buttons">
+      <% if message.money_in? %>
+        <button class="btn small" type="submit" name="as" value="in"><%== icon(:check, size: 16) %>Split it</button>
+        <a class="btn small ghost" href="<%= links[:income] %>">Change first</a>
+      <% elsif message.money_out? %>
+        <button class="btn small" type="submit" name="as" value="out"><%== icon(:check, size: 16) %>Save</button>
+        <a class="btn small ghost" href="<%= links[:spend] %>">Change first</a>
+        <a class="btn small ghost" href="<%= links[:move] %>">It was a transfer</a>
+      <% else %>
+        <button class="btn small" type="submit" name="as" value="in">Money in: split it</button>
+        <button class="btn small" type="submit" name="as" value="out">Money out: save</button>
+      <% end %>
+      <button class="btn small ghost" type="submit" formaction="/inbox/<%= message.id %>/dismiss" formnovalidate>Not needed</button>
+    </div>
+
+    <details style="margin-top: 12px">
+      <summary class="small muted" style="cursor: pointer">The SMS</summary>
+      <p class="small muted" style="margin: 8px 0 0; overflow-wrap: anywhere"><%= message.body %></p>
+    </details>
+  </form>
+<% end %>
+
+<% if done.any? %>
+  <h2 class="section">Done</h2>
+  <div class="card tight rows">
+    <% done.each do |message| %>
+      <div class="row">
+        <span class="badge sm <%= message.status == 'recorded' ? '' : 'c-muted' %>"><%== icon(message.status == 'recorded' ? :check : :x, size: 16) %></span>
+        <div class="grow">
+          <div class="title"><%= cedis(message.money_out? ? message.spent : message.amount) %> <%= message.money_out? ? 'out' : 'in' %></div>
+          <div class="sub"><%= message.status == 'recorded' ? 'Saved' : 'Not needed' %> · <%= short_date(message.occurred_on) %><%= " · #{message.counterparty}" if message.counterparty %></div>
+        </div>
+        <% if message.status == 'recorded' && message.transaction_id %>
+          <a class="icon-btn soft" href="/transactions/<%= message.transaction_id %>" aria-label="Open the saved entry"><%== icon(:chevron_right, size: 18) %></a>
+        <% elsif message.status == 'dismissed' %>
+          <form method="post" action="/inbox/<%= message.id %>/restore" class="inline-form"><button class="btn small ghost" type="submit">Put back</button></form>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+<% end %>

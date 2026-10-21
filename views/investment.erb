@@ -103,7 +103,7 @@
       <div class="num"><%= txn.kind == 'growth' ? signed(txn.net) : cedis(txn.amount) %></div>
       <% if index.zero? %>
         <form method="post" action="/invest/<%= investment.id %>/undo" class="inline-form" data-confirm="<%= history.size == 1 ? "Undo this? It removes #{investment.name} completely." : 'Undo this change?' %>">
-          <button class="icon-btn soft" type="submit" aria-label="Undo" title="Undo"><%== icon(:refresh, size: 16) %></button>
+          <button class="btn small ghost" type="submit">Undo</button>
         </form>
       <% end %>
     </div>
