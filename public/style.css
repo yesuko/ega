@@ -13,16 +13,18 @@
   --brand: #12804a;
   --brand-deep: #0c6438;
   --brand-soft: #e6f3eb;
+  --brand-fill: #12804a; /* behind white text */
   --on-brand: #ffffff;
   --danger: #c2372b;
   --danger-soft: #fdeeec;
+  --out: #b54a44; /* money going out: a softer red than --danger, which is for problems */
   --warn: #9a5800;
   --warn-soft: #fff3df;
   --pot-future: #4b55c8;
   --pot-buy: #c06f05;
   --pot-living: #0a7c8c;
   --pot-enjoy: #c93f74;
-  --shadow: 0 1px 2px rgba(16, 18, 24, .04), 0 10px 28px -16px rgba(16, 18, 24, .16);
+  --shadow: 0 1px 2px rgba(16, 18, 24, .06), 0 6px 16px -8px rgba(16, 18, 24, .12);
   --r-card: 20px;
   --r-field: 14px;
   color-scheme: light;
@@ -31,7 +33,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --canvas: #0f1114;
-    --card: #181b20;
+    --card: #1b1e24;
     --ink: #eceef1;
     --muted: #a3a9b4;
     --faint: #6c727d;
@@ -40,8 +42,10 @@
     --brand: #2a9d62;
     --brand-deep: #6fd29d;
     --brand-soft: #15301f;
+    --brand-fill: #1b7546;
     --danger: #f2766a;
     --danger-soft: #3a1c19;
+    --out: #e38a82;
     --warn: #f0b04a;
     --warn-soft: #33270f;
     --pot-future: #8d95f2;
@@ -57,9 +61,16 @@
 
 html { background: var(--canvas); -webkit-text-size-adjust: 100%; }
 
+/* App shell: the page itself never scrolls. .scroller does, and the tab bar
+   sits under it in the normal flow, so nothing is fixed to the screen (the
+   iPhone home-screen app moved a fixed tab bar up with the page). */
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+
 body {
   margin: 0;
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
   background: var(--canvas);
   color: var(--ink);
   font: 15px/1.45 "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -68,14 +79,18 @@ body {
 }
 
 a { color: var(--brand); }
+/* Links inside text (components have a class): bolder, with a lighter underline set lower. */
+a:not([class]) { font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .icon { flex: none; }
 h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
 p { margin: 0 0 10px; }
 
+.scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
+
 .app {
   max-width: 560px;
   margin: 0 auto;
-  padding: 0 16px calc(104px + env(safe-area-inset-bottom));
+  padding: 0 16px calc(28px + env(safe-area-inset-bottom));
 }
 
 /* --- Top bar and tab bar ------------------------------------------------- */
@@ -93,10 +108,8 @@ p { margin: 0 0 10px; }
 .topbar h1 { font-size: 20px; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tabs {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
+  flex: none;
   z-index: 20;
   background: var(--card);
   border-top: 1px solid var(--line);
@@ -109,7 +122,7 @@ p { margin: 0 0 10px; }
   align-items: center;
   gap: 3px;
   padding: 9px 0 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 550;
   color: var(--muted);
   text-decoration: none;
@@ -126,9 +139,8 @@ p { margin: 0 0 10px; }
   height: 48px;
   margin-top: -20px;
   border-radius: 16px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: var(--on-brand);
-  box-shadow: 0 8px 20px -8px rgba(18, 128, 74, .6);
 }
 
 /* --- The add sheet ------------------------------------------------------- */
@@ -142,10 +154,19 @@ dialog.sheet {
   border-radius: 24px 24px 0 0;
   background: var(--card);
   color: var(--ink);
+  overscroll-behavior: contain; /* scrolling a tall sheet stops at its ends, not the page */
 }
 dialog.sheet::backdrop { background: rgba(10, 12, 16, .45); }
-.sheet-handle { width: 40px; height: 4px; border-radius: 4px; background: var(--line); margin: 0 auto 14px; }
+.sheet-handle { position: relative; height: 26px; margin: -10px -16px 4px; cursor: grab; touch-action: none; }
+.sheet-handle::before { content: ''; position: absolute; top: 10px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 4px; background: var(--line); }
+/* Dragging these pulls the sheet down instead of scrolling the page. */
+.sheet-drag { cursor: grab; touch-action: none; }
 .sheet h2 { font-size: 17px; margin: 0 4px 12px; }
+.sheet h2:focus { outline: none; }
+.sheet .sheet-title { display: flex; align-items: center; gap: 8px; font-size: 16px; margin: 0; }
+.sheet-figure { font-size: 30px; font-weight: 750; letter-spacing: -.02em; margin: 8px 0 2px; font-variant-numeric: tabular-nums; }
+.sheet-section { font-size: 12px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 20px 0 4px; }
+.sheet .row .meter { margin-top: 6px; }
 
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .action {
@@ -166,7 +187,6 @@ dialog.sheet::backdrop { background: rgba(10, 12, 16, .45); }
 
 .card {
   background: var(--card);
-  border: 1px solid var(--line);
   border-radius: var(--r-card);
   box-shadow: var(--shadow);
   padding: 16px;
@@ -204,6 +224,7 @@ dialog.sheet::backdrop { background: rgba(10, 12, 16, .45); }
 .num small { display: block; font-weight: 500; font-size: 12px; color: var(--muted); }
 .pos { color: var(--brand); }
 .neg { color: var(--danger); }
+.out { color: var(--out); }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 .center { text-align: center; }
@@ -219,7 +240,7 @@ dialog.sheet::backdrop { background: rgba(10, 12, 16, .45); }
   height: 36px;
   border-radius: 12px;
   color: var(--c, var(--brand));
-  background: color-mix(in srgb, var(--c, var(--brand)) 14%, transparent);
+  background: color-mix(in srgb, var(--c, var(--brand)) 14%, var(--card)); /* solid, not see-through */
 }
 .badge.sm { width: 30px; height: 30px; border-radius: 10px; }
 .dot { display: inline-block; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--c, var(--brand)); }
@@ -259,30 +280,99 @@ dialog.sheet::backdrop { background: rgba(10, 12, 16, .45); }
 .flash.error { background: var(--danger-soft); color: var(--danger); }
 .callout { display: flex; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--field); font-size: 13.5px; color: var(--muted); margin-bottom: 14px; }
 .callout.warn { background: var(--warn-soft); color: var(--warn); }
+/* A next step under a note: a small button on its own line. */
+.step { margin-top: 10px; }
+.callout .btn.ghost { background: var(--card); color: var(--ink); }
+.step.choices { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* --- Home ---------------------------------------------------------------- */
 
-.hello { padding: calc(18px + env(safe-area-inset-top)) 4px 14px; }
+.hello { padding: 18px 4px 14px; }
 .hello h1 { font-size: 24px; font-weight: 700; }
-.hello p { color: var(--muted); margin: 2px 0 0; font-size: 14px; }
+
+/* A solid band behind the phone's clock and battery, so the page never shows
+   through frosted there; once the green card scrolls away, a slim bar with
+   today's figure hangs from it. */
+.home-top { position: sticky; top: 0; z-index: 15; height: env(safe-area-inset-top); margin: 0 -16px; background: var(--canvas); }
+.home-top .compact {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity .15s, visibility .15s;
+}
+.home-top.compact-on .compact { visibility: visible; opacity: 1; }
+.home-top .compact strong { font-size: 17px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.home-top .compact span { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.home-top .compact .meter { flex: 1; min-width: 40px; }
+.home-top .compact.over strong { color: var(--warn); }
+.home-top .compact.over .meter > i { background: var(--warn); }
+
+.quote-card { padding: 14px 16px 12px; margin-bottom: 12px; }
+.quote-label {
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
+  font-weight: 700;
+}
+.quote-text {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  font-weight: 600;
+}
+.welcome-card {
+  padding-top: 14px;
+}
+.welcome-kicker {
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 700;
+}
+.welcome-copy {
+  margin: 8px 0 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
 
 .hero {
+  --hero-bg: var(--brand-fill);
   border-radius: 24px;
   padding: 20px;
   margin-bottom: 12px;
-  background: var(--brand);
+  background: var(--hero-bg);
   color: var(--on-brand);
-  box-shadow: 0 16px 36px -20px rgba(18, 128, 74, .7);
 }
-.hero.over { background: #a8352a; box-shadow: none; }
-.hero .label { font-size: 13px; font-weight: 600; color: inherit; opacity: .85; margin: 0; }
+.hero .label { font-size: 13px; font-weight: 600; color: inherit; margin: 0; }
 .hero .figure { font-size: 44px; font-weight: 750; letter-spacing: -.025em; line-height: 1.1; margin: 4px 0 8px; font-variant-numeric: tabular-nums; }
 .hero .figure small { font-size: 22px; font-weight: 600; opacity: .8; margin-right: 4px; }
-.hero .meta { font-size: 13.5px; opacity: .92; }
-.hero .meter { background: rgba(255, 255, 255, .25); margin: 12px 0 8px; }
+.hero .meta { font-size: 13.5px; }
+.hero .meter { background: color-mix(in srgb, #fff 25%, var(--hero-bg)); margin: 12px 0 8px; }
 .hero .meter > i { background: #fff; }
 
-.quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 4px; }
+.hero .single-meter { margin: 0 0 10px; }
+
+.hero.over { --hero-bg: #a14a06; } /* amber: slow down, tomorrow's share adjusts */
+
+.quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
 .quick a {
   display: flex;
   flex-direction: column;
@@ -291,7 +381,7 @@ dialog.sheet::backdrop { background: rgba(10, 12, 16, .45); }
   padding: 12px 2px 10px;
   border-radius: 16px;
   background: var(--card);
-  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
   color: var(--ink);
   font-size: 12px;
   font-weight: 600;
@@ -406,7 +496,7 @@ button.chip:active > span { border-color: var(--brand); background: var(--brand-
   padding: 13px 18px;
   border: 0;
   border-radius: 14px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: var(--on-brand);
   font: inherit;
   font-weight: 650;
@@ -464,6 +554,7 @@ details.fold[open] > summary { margin-bottom: 14px; }
 .figures div { background: var(--field); border-radius: 14px; padding: 10px 12px; }
 .figures span { display: block; font-size: 12px; color: var(--muted); }
 .figures strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.figures.two { grid-template-columns: 1fr 1fr; }
 
 .monthnav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .monthnav strong { font-size: 17px; }
@@ -487,7 +578,7 @@ details.fold[open] > summary { margin-bottom: 14px; }
   width: 64px;
   height: 64px;
   border-radius: 20px;
-  background: var(--brand);
+  background: var(--brand-fill);
   color: var(--on-brand);
   margin: 0 auto 16px;
 }

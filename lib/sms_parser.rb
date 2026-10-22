@@ -10,7 +10,10 @@ module SmsParser
   OUTGOING = /payment made|your payment of|payment of|payment for|cash out|\bsent\b|\bpaid\b|debited|debit alert|withdraw|purchase|transfer(?:red)? to|\bdr\b/i
   BALANCE_BEFORE = /(?:\bbal(?:ance)?(?:\s+is)?|balance\s+after)\W*\z/i
   FEE_BEFORE = /(?:fee|charges?|charged|tax|levy)(?:\s+(?:was|is|of|charged))?\W*\z/i
-  PARTY_END = /(?=[.,;]\s|[.,;]?\z|\s+(?:on|at|current|your|ref|reference|has|have|is|new|avail\w*|transaction|trans|via|with)\b)/i
+  # Where a payee's name ends: a full stop or comma (MTN sometimes writes
+  # "to MTN BUNDLE .Current Balance", with no space after it), the end of the
+  # text, or a word that starts the next part of the message.
+  PARTY_END = /(?=\s*[.,;](?:\s|[a-z]|\z)|\s*\z|\s+(?:on|at|current|your|ref|reference|has|have|is|new|avail\w*|transaction|trans|via|with)\b)/i
   TXN_ID = /(?:financial\s+transaction\s+id|transaction\s+id|trans(?:action)?\.?\s*id|txn\s*id|ref(?:erence)?\s*(?:no|number|#))\s*[:.#]?\s*([A-Z0-9][A-Z0-9.\-]{4,})/i
   DESCRIPTION = /\b(?:desc(?:ription)?|narration|remarks?|details)\s*:?\s*(.+?)(?=\s+(?:avail\w*|bal(?:ance)?|date|amt|amount|ref\w*|acc(?:oun)?t)\b|\.(?:\s|\z)|\z)/i
   MONTHS = %w[jan feb mar apr may jun jul aug sep oct nov dec].freeze

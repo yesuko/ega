@@ -1,0 +1,10 @@
+<form method="post" action="/bills/<%= bill.id %>" class="card">
+  <%== erb :_error, layout: false, locals: { error: error } %>
+  <%== erb :_back_field, layout: false %>
+  <%== erb :_bill_fields, layout: false, locals: { form: form } %>
+  <%== erb :_bill_submit, layout: false, locals: { ask: ask, form: form, label: 'Save' } %>
+</form>
+<form method="post" action="/bills/<%= bill.id %>/delete" data-confirm="Remove <%= bill.name %>? Payments already recorded stay as they are.">
+  <%== erb :_back_field, layout: false %>
+  <button class="btn block danger" type="submit"><%== icon(:trash, size: 18) %>Remove bill</button>
+</form>

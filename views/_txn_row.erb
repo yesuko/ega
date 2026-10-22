@@ -1,5 +1,5 @@
 <% amount, tone = txn_amount(txn) %>
-<a class="row" href="/transactions/<%= txn.id %>">
+<a class="row" href="<%= with_back("/transactions/#{txn.id}") %>">
   <span class="badge sm <%= txn.kind == 'income' ? '' : 'c-muted' %>"><%== icon(txn.icon, size: 17) %></span>
   <div class="grow">
     <div class="title"><%= txn_title(txn) %></div>

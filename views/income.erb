@@ -54,6 +54,7 @@
     </div>
   </div>
   <input type="hidden" name="inbox_id" value="<%= form['inbox_id'] %>">
+  <%== erb :_back_field, layout: false %>
   <input type="hidden" name="external_ref" value="<%= form['external_ref'] %>">
   <button class="btn block" type="submit">Save and split</button>
 </form>

@@ -1,8 +1,18 @@
 <% user = current_user %>
 <% hour = Time.now.hour %>
+<%# Today's figure from Living and Enjoy together, for the green card and the slim bar. %>
+<% total = living[:left] + safe[:left] %>
+<% share = living[:allowance] + safe[:allowance] %>
+<% left_width = share.positive? ? percent_of([total, 0].max, share) : 0 %>
+<div class="home-top" data-compact-for="today-card">
+  <button class="compact <%= 'over' if total.negative? %>" type="button" title="Back to the top">
+    <strong><%= total.negative? ? "Over by #{cedis(-total)}" : cedis(total) %></strong>
+    <span><%= total.negative? ? "today's share" : 'safe today' %></span>
+    <span class="meter thin"><i style="width: <%= left_width %>%"></i></span>
+  </button>
+</div>
 <header class="hello">
   <h1>Good <%= hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening' %>, <%= user.first_name %></h1>
-  <p><%= long_date(today) %></p>
 </header>
 
 <% unless started %>
@@ -21,23 +31,22 @@
   </div>
 <% end %>
 
-<% over = safe[:left].negative? %>
-<section class="hero <%= 'over' if over %>">
-  <div class="label"><%= over ? "Over today's share by" : 'Safe to spend today' %></div>
-  <div class="figure"><small>GH₵</small><%= Money.format(safe[:left].abs) %></div>
-  <% if safe[:allowance].positive? && safe[:spent].positive? %>
-    <div class="meter"><i style="width: <%= percent_of(safe[:spent], safe[:allowance]) %>%"></i></div>
-  <% end %>
+<%# What can be spent today from Living and Enjoy together. The bar is what's
+    left of today's share: full in the morning, shorter with each spend. What
+    each pot has spent is in its sheet and activity (Your pots, below). %>
+<% next_on = safe[:next_income_on] %>
+<% living_pot = user.pot('living') %>
+<section class="hero today <%= 'over' if total.negative? %>" id="today-card">
+  <div class="label"><%= total.negative? ? "Over today's share by" : 'Safe to spend today' %></div>
+  <div class="figure"><small>GH₵</small><%= Money.format(total.abs) %></div>
+  <div class="meter single-meter"><i style="width: <%= left_width %>%"></i></div>
   <div class="meta">
-    <% next_on = safe[:next_income_on] %>
-    <% until_text = user.payday ? "payday, #{short_date(next_on)}" : short_date(next_on) %>
-    <% if over %>
-      Spent <%= cedis(safe[:spent]) %> of <%= cedis(safe[:allowance]) %> from Enjoy today. Tomorrow's share will be a little smaller.
-    <% elsif safe[:balance] <= 0 && safe[:spent].zero? %>
-      Your Enjoy pot is empty until your next income.
+    <% if living[:kept].positive? && living[:free].negative? %>
+      <%= living_pot.name %> needs <%= cedis(-living[:free], short: true) %> more to cover your bills (<%= cedis(living[:kept], short: true) %>).
+    <% elsif living[:kept].positive? && living[:free].zero? %>
+      Everything in <%= living_pot.name %> is kept back for your bills until <%= short_date(next_on) %>.
     <% else %>
-      <%= user.pot('enjoy').name %> has <%= cedis(safe[:balance], short: true) %> for <%= safe[:days] %> <%= safe[:days] == 1 ? 'day' : 'days' %>, until <%= until_text %>.
-      <% if safe[:spent].positive? %>Spent <%= cedis(safe[:spent], short: true) %> today.<% end %>
+      Shared over <%= safe[:days] %> <%= safe[:days] == 1 ? 'day' : 'days' %> to <%= user.payday ? "payday, #{short_date(next_on)}" : short_date(next_on) %><% if living[:kept].positive? %> · <%= cedis(living[:kept], short: true) %> kept back for <%= living[:bills] %> <%= living[:bills] == 1 ? 'bill' : 'bills' %><% end %>.
     <% end %>
   </div>
 </section>
@@ -48,6 +57,13 @@
   <a href="/move/new"><%== icon(:arrow_left_right, size: 22) %>Move</a>
   <a href="/import"><%== icon(:message, size: 22) %>Paste SMS</a>
 </nav>
+
+<% if quote %>
+  <div class="card quote-card">
+    <div class="quote-label">Money quote</div>
+    <blockquote class="quote-text">“<%= quote %>”</blockquote>
+  </div>
+<% end %>
 
 <% todo_count = (inbox_count.positive? ? 1 : 0) + moves.size + unbanked.size + cooled.size + maturities.size + overdrawn.size %>
 <% if todo_count.positive? %>
@@ -121,7 +137,7 @@
         <div class="grow">
           <div class="title"><%= investment.name %> <%= investment.matures_on > today ? 'matures' : 'matured' %> <%= days_from_now(investment.matures_on) %></div>
           <div class="sub">When the money arrives, record what you received. You can roll it over into a new one in the same step.</div>
-          <div class="do"><a class="btn small" href="/invest/<%= investment.id %>">Open</a></div>
+          <div class="do"><a class="btn small" href="<%= with_back("/invest/#{investment.id}") %>">Open</a></div>
         </div>
       </div>
     <% end %>
@@ -143,12 +159,9 @@
 <div class="pots">
   <% user.pots.each do |pot| %>
     <% balance = plan.pot_balance(pot) %>
-    <a class="card pot <%= pot_class(pot) %>" href="/activity?pot=<%= pot.id %>">
+    <a class="card pot <%= pot_class(pot) %>" href="<%= with_back("/activity?pot=#{pot.id}") %>" data-sheet="pot-<%= pot.id %>" aria-haspopup="dialog">
       <div class="name"><span class="badge sm"><%== icon(pot.icon, size: 16) %></span><%= pot.name %></div>
       <div class="figure <%= 'neg' if balance.negative? %>"><%= cedis(balance, short: true) %></div>
-      <div class="where">
-        <%= user.accounts.filter_map { |a| (held = plan.balance_at(pot, a)).zero? ? nil : "#{a.name} #{Money.format(held, short: true)}" }.join(' · ').then { |s| s.empty? ? "#{pot.percent}% of each income" : s } %>
-      </div>
       <% if pot.kind == 'future' && emergency[:target] %>
         <div class="meter thin"><i style="width: <%= percent_of(emergency[:saved], emergency[:target]) %>%"></i></div>
         <div class="where"><%= emergency[:done] ? 'Emergency fund full' : format('Emergency fund: %.1f of %d months', emergency[:months].clamp(0, 99), user.emergency_months) %></div>
@@ -159,6 +172,9 @@
     </a>
   <% end %>
 </div>
+<% user.pots.each do |pot| %>
+  <%== erb :_pot_sheet, layout: false, locals: { pot: pot, month: month, bills: bills, bills_due: bills_due, bills_paid: bills_paid, bill_savings: bill_savings } %>
+<% end %>
 
 <h2 class="section">Accounts</h2>
 <div class="card tight rows">
@@ -178,7 +194,7 @@
 </div>
 
 <% if recent.any? %>
-  <h2 class="section">Recent <a href="/activity">See all</a></h2>
+  <h2 class="section">Recent <a href="<%= with_back('/activity') %>">See all</a></h2>
   <div class="card tight rows">
     <% recent.each do |txn| %>
       <%== erb :_txn_row, layout: false, locals: { txn: txn, show_date: true } %>

@@ -21,6 +21,11 @@ class SmsParserTest < Minitest::Test
     assert_equal [:out, 2_000, 20, 'KOFI MENSAH'], sms.values_at(:direction, :amount, :fee, :counterparty)
   end
 
+  def test_mtn_payment_for_a_bundle_without_a_space_after_the_full_stop
+    sms = parse('Payment for GHS10.00 to MTN BUNDLE .Current Balance: GHS 1500.00. Transaction Id: 92000000001.')
+    assert_equal [:out, 1_000, 'MTN BUNDLE', 150_000, '92000000001'], sms.values_at(:direction, :amount, :counterparty, :balance, :ref_id)
+  end
+
   def test_telecel_sent
     sms = parse('0001234567 Confirmed. GHS50.00 sent to 0201234567 JOHN DOE on 2026-10-12 at 10:00. ' \
                 'Your Telecel Cash balance is GHS100.00. Fee GHS0.50')

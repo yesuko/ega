@@ -7,6 +7,15 @@ class User < Sequel::Model
   one_to_many :buy_items
   one_to_many :investments
 
+  MONEY_QUOTES = [
+    'Money works best when you give it a job before it arrives.',
+    'A simple plan turns stress into progress.',
+    'Small, clear decisions beat big, chaotic ones.',
+    'Your next budget choice is a quiet act of freedom.',
+    'You do not need more money to feel more in control.',
+    'Saving is not sacrifice; it is building options.'
+  ].freeze
+
   DEFAULT_ACCOUNTS = [['Bank savings', 'bank'], ['MoMo', 'momo'], ['Cash', 'cash'], ['Investments', 'investment']].freeze
   # kind, name, percent, home account (by name; nil = anywhere)
   DEFAULT_POTS = [
@@ -29,6 +38,7 @@ class User < Sequel::Model
   def before_validation
     self.emergency_months ||= 3
     self.cooling_hours ||= 48
+    self.show_money_quote = true if show_money_quote.nil?
     super
   end
 

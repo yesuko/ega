@@ -1,0 +1,72 @@
+<section class="card c-living">
+  <div class="between">
+    <div>
+      <div class="muted small" style="font-weight: 600">Kept back for bills</div>
+      <div style="font-size: 28px; font-weight: 750"><%= cedis(living[:kept], short: true) %></div>
+    </div>
+    <span class="badge"><%== icon(:receipt) %></span>
+  </div>
+  <p class="small muted" style="margin: 6px 0 0">Living keeps back what your bills need before your next income, and a little of each income for bigger ones further off. "Safe to spend today" only counts what's left. Mark a spend as a bill when you pay it.</p>
+  <% if gets && need > gets %>
+    <p class="small neg" style="margin: 8px 0 0">Your bills need about <%= cedis(about(need), short: true) %> a month, but Living gets about <%= cedis(about(gets), short: true) %>. Give Living a bigger share, or cut a bill.</p>
+    <div class="step"><a class="btn small ghost" href="/settings#pots">Change Living's share</a></div>
+  <% elsif gets && need.positive? %>
+    <p class="small muted" style="margin: 8px 0 0">Living gets about <%= cedis(about(gets), short: true) %> a month, and your bills take about <%= cedis(about(need), short: true) %> of it.</p>
+  <% end %>
+</section>
+
+<details class="card fold" id="add" <%= 'open' if error || form.any? || bills.empty? %>>
+  <summary class="between"><strong>Add a bill</strong><span class="icon-btn soft"><%== icon(:plus, size: 18) %></span></summary>
+  <form method="post" action="/bills">
+    <%== erb :_error, layout: false, locals: { error: error } %>
+    <%== erb :_back_field, layout: false %>
+    <%== erb :_bill_fields, layout: false, locals: { form: form } %>
+    <%== erb :_bill_submit, layout: false, locals: { ask: ask, form: form, label: 'Add bill' } %>
+  </form>
+</details>
+
+<% if bills.any? %>
+  <h2 class="section">Your bills <span>about <%= cedis(about(need), short: true) %> a month</span></h2>
+  <div class="card tight">
+    <% living_pot = current_user.pot('living') %>
+    <% bills.each do |bill| %>
+      <% owed = due.find { |d| d[:bill].id == bill.id } %>
+      <% saved = saving.find { |s| s[:bill].id == bill.id } %>
+      <% payment = paid[bill.id] %>
+      <div class="item">
+        <div class="top">
+          <span class="badge sm c-living"><%== icon(payment && !owed && !saved ? :check : :receipt, size: 16) %></span>
+          <div class="grow">
+            <div class="between"><div class="name"><%= bill.name %></div><div class="num"><%= cedis(bill.amount, short: true) %></div></div>
+            <div class="facts">
+              <%= bill.due_label.capitalize %> ·
+              <% if owed %>
+                <span class="<%= 'neg' if owed[:overdue] %>"><%= owed[:overdue] ? "overdue since #{short_date(owed[:due_on])}" : "due #{short_date(owed[:due_on])}" %></span>
+              <% elsif saved %>
+                by <%= short_date(saved[:due_on]) %>
+              <% elsif payment %>
+                paid <%= short_date(payment.occurred_on) %>
+              <% elsif bill.monthly? && bill.starts_on %>
+                starts <%= short_date(bill.due_on(bill.starts_on)) %>
+              <% end %>
+            </div>
+            <% if owed && owed[:overdue] && owed[:due_on] >= started_on %>
+              <div class="facts">Already recorded it? Open that spend and choose this bill.</div>
+            <% end %>
+            <% if saved %>
+              <div class="meter thin c-living" style="margin-top: 8px"><i style="width: <%= percent_of(saved[:kept], bill.amount) %>%"></i></div>
+              <div class="facts"><%= cedis(saved[:kept], short: true) %> set aside<% if saved[:next_on] %> · next <%= cedis(saved[:next_share], short: true) %> on <%= short_date(saved[:next_on]) %><% end %></div>
+            <% end %>
+          </div>
+        </div>
+        <div class="controls">
+          <a class="icon-btn" href="<%= with_back("/bills/#{bill.id}/edit") %>" aria-label="Edit <%= bill.name %>"><%== icon(:pencil, size: 16) %></a>
+          <span class="spacer"></span>
+          <% if owed %>
+            <a class="btn small" href="<%= with_back("/spend/new?#{URI.encode_www_form(pot_id: living_pot.id, amount: Money.input(bill.amount), bill: bill.id, note: bill.name)}") %>">Pay</a>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+<% end %>

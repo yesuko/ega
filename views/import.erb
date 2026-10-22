@@ -28,19 +28,19 @@
   </div>
 
   <% if duplicate %>
-    <div class="callout warn"><%== icon(:alert, size: 18) %><span>You already saved a transaction with this ID on <%= short_date(duplicate.occurred_on) %>. <a href="/transactions/<%= duplicate.id %>">Look at it</a> before saving it again.</span></div>
+    <div class="callout warn"><%== icon(:alert, size: 18) %><div>You already saved a transaction with this ID on <%= short_date(duplicate.occurred_on) %>. Check it before saving it again.<div class="step"><a class="btn small ghost" href="<%= with_back("/transactions/#{duplicate.id}", '/import') %>">Look at it</a></div></div></div>
   <% end %>
 
   <div class="stack">
     <% if direction != :out %>
-      <a class="btn block" href="<%= links[:income] %>"><%== icon(:arrow_down_left, size: 18) %>Record as money in</a>
+      <a class="btn block" href="<%= with_back(links[:income], '/import') %>"><%== icon(:arrow_down_left, size: 18) %>Record as money in</a>
     <% end %>
     <% if direction != :in %>
-      <a class="btn block <%= 'ghost' if direction.nil? %>" href="<%= links[:spend] %>"><%== icon(:arrow_up_right, size: 18) %>Record as spending</a>
+      <a class="btn block <%= 'ghost' if direction.nil? %>" href="<%= with_back(links[:spend], '/import') %>"><%== icon(:arrow_up_right, size: 18) %>Record as spending</a>
     <% end %>
-    <a class="btn block ghost" href="<%= links[:move] %>"><%== icon(:arrow_left_right, size: 18) %>It was a move between my accounts</a>
+    <a class="btn block ghost" href="<%= with_back(links[:move], '/import') %>"><%== icon(:arrow_left_right, size: 18) %>It was a move between my accounts</a>
     <% if links[:check] %>
-      <a class="btn block ghost" href="<%= links[:check] %>"><%== icon(:scale, size: 18) %>Check <%= account&.name || 'the account' %> against <%= cedis(result[:balance], short: true) %></a>
+      <a class="btn block ghost" href="<%= with_back(links[:check], '/import') %>"><%== icon(:scale, size: 18) %>Check <%= account&.name || 'the account' %> against <%= cedis(result[:balance], short: true) %></a>
     <% end %>
     <a class="btn block link" href="/import">Paste another</a>
   </div>

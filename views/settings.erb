@@ -50,6 +50,13 @@
     <input type="number" id="cooling_hours" name="cooling_hours" value="<%= user.cooling_hours %>" min="0" max="168" required>
     <p class="hint">0 turns it off.</p>
   </div>
+  <div class="field">
+    <input type="hidden" name="show_money_quote" value="0"><%# an unticked box sends nothing %>
+    <label class="check" for="show_money_quote">
+      <input type="checkbox" id="show_money_quote" name="show_money_quote" value="1" <%= 'checked' if user.show_money_quote %>>
+      <span>Show a money quote on the home screen</span>
+    </label>
+  </div>
   <button class="btn block" type="submit">Save plan</button>
 </form>
 

@@ -1,0 +1,15 @@
+<%# "Is it a bill?" for a spend from Living; shown only while Living is the chosen pot. %>
+<% if bills.any? || (defined?(current) && current) %>
+  <% choices = bills.dup %>
+  <% choices << current if defined?(current) && current && !choices.include?(current) %>
+  <div class="field" data-bill-for="<%= current_user.pot('living').id %>" style="margin-top: 12px">
+    <label class="label" for="<%= id_prefix %>bill">Is it a bill?</label>
+    <select id="<%= id_prefix %>bill" name="bill_id">
+      <option value="">No, everyday spending</option>
+      <% choices.each do |bill| %>
+        <option value="<%= bill.id %>" <%= 'selected' if selected.to_s == bill.id.to_s %>><%= bill.name %> (<%= cedis(bill.amount, short: true) %>)</option>
+      <% end %>
+    </select>
+    <p class="hint">Choosing a bill marks it paid, so Living stops keeping money back for it.</p>
+  </div>
+<% end %>

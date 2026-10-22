@@ -4,7 +4,7 @@
 </div>
 
 <% if current_user.inbox_token.nil? %>
-  <div class="callout"><%== icon(:smartphone, size: 18) %><span>Your phone isn't forwarding SMS yet. <a href="/inbox/setup">Set it up</a> once, with MacroDroid on Android or Shortcuts on iPhone.</span></div>
+  <div class="callout"><%== icon(:smartphone, size: 18) %><div>Your phone isn't forwarding SMS yet. Set it up once, with MacroDroid on Android or Shortcuts on iPhone.<div class="step"><a class="btn small ghost" href="/inbox/setup">Set it up</a></div></div></div>
 <% end %>
 
 <% if pending.empty? %>
@@ -16,7 +16,9 @@
   <% links = inbox_links(message, account) %>
   <% notes = message.notes %>
   <% saved = message.saved_already %>
+  <% usual = plan.pot_for_payee(message.counterparty) %>
   <form method="post" action="/inbox/<%= message.id %>/record" class="card" id="m-<%= message.id %>">
+    <%== erb :_back_field, layout: false %>
     <div class="between" style="align-items: flex-start">
       <div class="grow">
         <div class="muted small" style="font-weight: 600"><%= message.network || 'SMS' %> · <%= message.money_in? ? 'money in' : message.money_out? ? 'money out' : 'in or out?' %> · <%= short_date(message.occurred_on) %></div>
@@ -28,7 +30,7 @@
     </div>
 
     <% if saved %>
-      <div class="callout warn" style="margin: 12px 0 0"><%== icon(:alert, size: 18) %><span>You already saved this on <%= short_date(saved.occurred_on) %>. <a href="/transactions/<%= saved.id %>">Look at it</a>, then tap Not needed.</span></div>
+      <div class="callout warn" style="margin: 12px 0 0"><%== icon(:alert, size: 18) %><div>You already saved this on <%= short_date(saved.occurred_on) %>. If it's the same, tap Not needed.<div class="step"><a class="btn small ghost" href="<%= with_back("/transactions/#{saved.id}") %>">Look at it</a></div></div></div>
     <% end %>
 
     <div class="field" style="margin: 14px 0 12px">
@@ -37,19 +39,20 @@
     </div>
     <% unless message.money_in? %>
       <div class="field" style="margin-bottom: 14px">
-        <span class="label"><%= message.money_out? ? 'From pot' : 'If it was spending, from pot' %></span>
-        <%== erb :_pot_chips, layout: false, locals: { name: 'pot_id', selected: nil } %>
+        <span class="label"><%= message.money_out? ? 'From pot' : 'If it was spending, from pot' %><% if usual %> <span style="font-weight: 500">(last time: <%= usual.name %>)</span><% end %></span>
+        <%== erb :_pot_chips, layout: false, locals: { name: 'pot_id', selected: usual&.id } %>
+        <%== erb :_bill_field, layout: false, locals: { bills: bills, selected: nil, id_prefix: "m#{message.id}-" } %>
       </div>
     <% end %>
 
     <div class="buttons">
       <% if message.money_in? %>
         <button class="btn small" type="submit" name="as" value="in"><%== icon(:check, size: 16) %>Split it</button>
-        <a class="btn small ghost" href="<%= links[:income] %>">Change first</a>
+        <a class="btn small ghost" href="<%= with_back(links[:income]) %>">Change first</a>
       <% elsif message.money_out? %>
         <button class="btn small" type="submit" name="as" value="out"><%== icon(:check, size: 16) %>Save</button>
-        <a class="btn small ghost" href="<%= links[:spend] %>">Change first</a>
-        <a class="btn small ghost" href="<%= links[:move] %>">It was a transfer</a>
+        <a class="btn small ghost" href="<%= with_back(links[:spend]) %>">Change first</a>
+        <a class="btn small ghost" href="<%= with_back(links[:move]) %>">It was a transfer</a>
       <% else %>
         <button class="btn small" type="submit" name="as" value="in">Money in: split it</button>
         <button class="btn small" type="submit" name="as" value="out">Money out: save</button>
@@ -74,10 +77,10 @@
           <div class="title"><%= cedis(message.money_out? ? message.spent : message.amount) %> <%= message.money_out? ? 'out' : 'in' %></div>
           <div class="sub"><%= message.status == 'recorded' ? 'Saved' : 'Not needed' %> · <%= short_date(message.occurred_on) %><%= " · #{message.counterparty}" if message.counterparty %></div>
         </div>
-        <% if message.status == 'recorded' && message.transaction_id %>
-          <a class="icon-btn soft" href="/transactions/<%= message.transaction_id %>" aria-label="Open the saved entry"><%== icon(:chevron_right, size: 18) %></a>
-        <% elsif message.status == 'dismissed' %>
-          <form method="post" action="/inbox/<%= message.id %>/restore" class="inline-form"><button class="btn small ghost" type="submit">Put back</button></form>
+        <% if message.status == 'recorded' && message.txn %>
+          <a class="icon-btn soft" href="<%= with_back("/transactions/#{message.transaction_id}") %>" aria-label="Open the saved entry"><%== icon(:chevron_right, size: 18) %></a>
+        <% else %>
+          <form method="post" action="/inbox/<%= message.id %>/restore" class="inline-form"><%== erb :_back_field, layout: false %><button class="btn small ghost" type="submit">Put back</button></form>
         <% end %>
       </div>
     <% end %>

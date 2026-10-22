@@ -31,6 +31,41 @@ class AppTest < Minitest::Test
     assert_includes last_response.body, 'Start with what you have now'
   end
 
+  def test_home_shows_a_simplified_safe_to_spend_summary_and_quote
+    sign_up
+    user = User.first(email: 'ama@example.com')
+    momo = user.accounts.find { |a| a.name == 'MoMo' }
+    post '/income', amount: '2000', account_id: momo.id, mode: 'split', occurred_on: Date.today.iso8601
+    get '/'
+    body = last_response.body
+    assert_includes body, 'Safe to spend today'
+    assert body.index('Safe to spend today') < body.index('Money quote'), 'the quote comes after the card'
+    bar = ->(html) { html[/class="meter single-meter"><i style="width: (\d+)%"/, 1].to_i }
+    assert_equal 100, bar.call(body) # nothing spent yet
+
+    post '/spend', amount: '10', pot_id: user.pot('living').id, account_id: momo.id, occurred_on: Date.today.iso8601
+    get '/'
+    assert_operator bar.call(last_response.body), :<, 100 # each spend shortens it
+  end
+
+  def test_money_quote_can_be_turned_off_in_settings
+    sign_up
+    get '/settings'
+    # An unticked box sends nothing, so a hidden field before it sends 0.
+    assert_match(/name="show_money_quote" value="0">.*name="show_money_quote" value="1"/m, last_response.body)
+    post '/settings/plan', show_money_quote: '0'
+    assert_equal 302, last_response.status
+    get '/'
+    refute_includes last_response.body, 'Money quote'
+  end
+
+  def test_login_shows_the_quote_after_the_form_and_sign_up_none
+    get '/login'
+    assert last_response.body.index('Log in</button>') < last_response.body.index('Money quote')
+    get '/signup'
+    refute_includes last_response.body, 'Money quote'
+  end
+
   def test_sign_up_checks_the_details
     sign_up
     clear_cookies

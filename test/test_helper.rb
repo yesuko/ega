@@ -16,7 +16,7 @@ Sequel::Migrator.run(DB, File.join(root, 'db', 'migrate'))
 BCrypt::Engine.cost = BCrypt::Engine::MIN_COST
 
 %w[lib/money lib/sms_parser models/user models/account models/pot models/buy_item models/investment
-   models/transaction models/entry lib/plan lib/ledger].each { |file| require File.join(root, file) }
+   models/transaction models/entry models/inbox_message lib/plan lib/ledger].each { |file| require File.join(root, file) }
 
 # Every test runs inside a transaction that is rolled back afterwards.
 module RollbackEachTest

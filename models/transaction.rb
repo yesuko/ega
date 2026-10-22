@@ -4,6 +4,7 @@ class Transaction < Sequel::Model
   many_to_one :user
   many_to_one :buy_item
   many_to_one :investment
+  many_to_one :bill
   one_to_many :entries, order: :id
 
   KINDS = {
@@ -38,6 +39,12 @@ class Transaction < Sequel::Model
   # Investment events are undone from the investment's page, latest first.
   def investment_event?
     %w[invest growth cashout].include?(kind) && investment_id
+  end
+
+  # A spend or balance check with a single entry, not a Buy List purchase,
+  # can be moved to another pot.
+  def pot_changeable?
+    %w[spend check].include?(kind) && buy_item_id.nil? && entries.size == 1
   end
 
   # Net effect on what you own: income and checks add, spending takes away,

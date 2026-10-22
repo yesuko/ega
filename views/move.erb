@@ -52,6 +52,7 @@
     </div>
   </div>
   <input type="hidden" name="inbox_id" value="<%= form['inbox_id'] %>">
+  <%== erb :_back_field, layout: false %>
   <button class="btn block" type="submit">Save the move</button>
 </form>
 <script type="application/json" id="balances"><%== json_for_script(balances) %></script>

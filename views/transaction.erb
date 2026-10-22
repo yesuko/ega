@@ -7,6 +7,10 @@
   <% if txn.note && txn.note != txn_title(txn) %><p class="small" style="margin: 10px 0 0"><%= txn.note %></p><% end %>
 </div>
 
+<% if txn.bill %>
+  <p class="small muted" style="margin: 0 4px 12px"><%== icon(:receipt, size: 14) %> Pays <%= txn.bill.name %> for <%= txn.bill_month&.strftime('%B %Y') %>.</p>
+<% end %>
+
 <h2 class="section">What changed</h2>
 <div class="card tight rows">
   <% txn.entries.each do |entry| %>
@@ -16,24 +20,40 @@
         <div class="title"><%= entry.pot.name %></div>
         <div class="sub"><%= entry.account.name %><%= ' · fee' if entry.flow == 'fee' %></div>
       </div>
-      <div class="num <%= entry.amount.negative? ? 'neg' : 'pos' %>"><%= signed(entry.amount) %></div>
+      <div class="num <%= entry.amount.negative? ? 'out' : 'pos' %>"><%= signed(entry.amount) %></div>
     </div>
   <% end %>
 </div>
 
 <% if txn.external_ref %><p class="hint" style="margin: 0 4px 12px">From an SMS, transaction ID <%= txn.external_ref %>.</p><% end %>
 
+<% if txn.pot_changeable? %>
+  <details class="card fold" <%= 'open' if params[:change] %>>
+    <summary class="between"><strong>Wrong pot?</strong><span class="icon-btn soft"><%== icon(:pencil, size: 16) %></span></summary>
+    <form method="post" action="/transactions/<%= txn.id %>/pot">
+      <%== erb :_back_field, layout: false %>
+      <%== erb :_pot_chips, layout: false, locals: { name: 'pot_id', selected: txn.entries.first.pot_id } %>
+      <%== erb :_bill_field, layout: false, locals: { bills: active_bills, selected: txn.bill_id, id_prefix: '', current: txn.bill } %>
+      <button class="btn block" type="submit" style="margin-top: 14px">Save</button>
+      <p class="hint">Moves this <%= cedis(txn.amount) %> to the pot you choose; the money stays in <%= txn.entries.first.account.name %>.</p>
+    </form>
+  </details>
+<% end %>
+
 <% if deletable?(txn) %>
   <form method="post" action="/transactions/<%= txn.id %>/delete" data-confirm="Delete this? Balances go back to how they were before it.">
+    <%== erb :_back_field, layout: false %>
     <button class="btn block danger" type="submit"><%== icon(:trash, size: 18) %>Delete</button>
   </form>
   <p class="hint center">
     <% if txn.buy_item_id %>
       <%= txn.buy_item&.name %> goes back on your Buy List.
+    <% elsif InboxMessage.where(transaction_id: txn.id).any? %>
+      This came from your SMS inbox: the SMS goes back there, so you can record it again (use Change first to edit it).
     <% elsif txn.investment_event? && txn.snapshot.nil? %>
       This removes <%= txn.investment&.name %> too.
     <% else %>
-      To change it, delete it and record it again.
+      <%= txn.pot_changeable? ? 'To change the amount or date' : 'To change it' %>, delete it and record it again.
     <% end %>
   </p>
 <% else %>

@@ -35,16 +35,26 @@
   }
 
   function onReady() {
-    // The add sheet opens from the + tab; the link still works without JS.
+    // Sheets (the + menu, pot details) close on their ✕, a tap outside, or a
+    // drag down from the top. Their links still work without JS. (The page
+    // behind can't scroll: only .scroller does, and the sheet covers it.)
+    // Opening one focuses its title, not its first button: the iPhone
+    // home-screen app drew a focus ring round the ✕ after a tap.
+    each('dialog.sheet', function (sheet) {
+      if (!sheet.showModal) return;
+      var dragged = sheetDrag(sheet);
+      sheet.addEventListener('click', function (event) {
+        if (event.target === sheet && !dragged()) sheet.close();
+      });
+    });
     each('[data-sheet]', function (link) {
       var sheet = document.getElementById(link.dataset.sheet);
       if (!sheet || !sheet.showModal) return;
       link.addEventListener('click', function (event) {
         event.preventDefault();
         sheet.showModal();
-      });
-      sheet.addEventListener('click', function (event) {
-        if (event.target === sheet) sheet.close();
+        var title = sheet.querySelector('h2[tabindex]');
+        if (title) title.focus();
       });
     });
 
@@ -84,6 +94,9 @@
       fit();
     });
 
+    each('[data-bill-for]', billField);
+    each('[data-show-when]', showWhen);
+    each('[data-compact-for]', compactBar);
     each('form[data-split]', splitPreview);
     each('form[data-hints]', balanceHints);
     each('form[data-check]', checkPreview);
@@ -92,7 +105,118 @@
     each('form[data-percent-total]', percentTotal);
   }
 
-  // Shows how the amount being entered will be shared, like Plan#split.
+  // Lets a sheet be pulled down by its handle or header: past a third of its
+  // height, or with a quick flick, it closes; otherwise it springs back.
+  // Returns a function telling whether the last press was a drag, so the
+  // click that ends a drag isn't taken as a tap outside.
+  function sheetDrag(sheet) {
+    var startY = null, lastY = 0, lastTime = 0, speed = 0, moved = false;
+
+    function begin(event) {
+      if (!event.target.closest('.sheet-handle, .sheet-drag')) return;
+      if (event.target.closest('button, a, input, select, textarea')) return;
+      startY = lastY = event.clientY;
+      lastTime = event.timeStamp;
+      speed = 0;
+      moved = false;
+      sheet.style.transition = 'none';
+      sheet.setPointerCapture(event.pointerId);
+    }
+
+    function move(event) {
+      if (startY === null) return;
+      var distance = Math.max(0, event.clientY - startY);
+      if (distance > 4) moved = true;
+      speed = (event.clientY - lastY) / Math.max(1, event.timeStamp - lastTime);
+      lastY = event.clientY;
+      lastTime = event.timeStamp;
+      sheet.style.transform = 'translateY(' + distance + 'px)';
+    }
+
+    function end(event) {
+      if (startY === null) return;
+      var distance = Math.max(0, event.clientY - startY);
+      startY = null;
+      sheet.style.transition = 'transform .2s ease';
+      if (distance > sheet.offsetHeight / 3 || (distance > 20 && speed > 0.5)) {
+        sheet.style.transform = 'translateY(100%)';
+        setTimeout(function () {
+          sheet.close();
+          sheet.style.transition = '';
+          sheet.style.transform = '';
+        }, 200);
+      } else {
+        sheet.style.transform = '';
+      }
+    }
+
+    sheet.addEventListener('pointerdown', begin);
+    sheet.addEventListener('pointermove', move);
+    sheet.addEventListener('pointerup', end);
+    sheet.addEventListener('pointercancel', end);
+    return function () {
+      var was = moved;
+      moved = false;
+      return was;
+    };
+  }
+
+  // "Is it a bill?" only applies to Living: shown (and sent) while Living is
+  // the chosen pot.
+  function billField(field) {
+    var form = field.closest('form');
+    var select = field.querySelector('select');
+
+    function render() {
+      var living = checked(form, 'pot_id') === field.dataset.billFor;
+      field.classList.toggle('hide', !living);
+      select.disabled = !living;
+    }
+
+    form.addEventListener('change', function (event) {
+      if (event.target.name === 'pot_id') render();
+    });
+    render();
+  }
+
+  // The slim bar at the top of home: shown once the green card has scrolled
+  // up under it, and tapping it goes back to the top.
+  function compactBar(top) {
+    var card = document.getElementById(top.dataset.compactFor);
+    var scroller = top.closest('.scroller');
+    var bar = top.querySelector('.compact');
+    if (!card || !scroller || !('IntersectionObserver' in window)) return;
+
+    var covered = top.offsetHeight + bar.offsetHeight;
+    new IntersectionObserver(function (entries) {
+      var entry = entries[0];
+      top.classList.toggle('compact-on', !entry.isIntersecting && entry.boundingClientRect.top < covered);
+    }, { root: scroller, rootMargin: '-' + covered + 'px 0px 0px 0px' }).observe(card);
+    bar.addEventListener('click', function () {
+      scroller.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+
+  // Shows a field only while a radio choice has one of its values
+  // (data-show-when="repeats=termly,yearly,once"); hidden inputs aren't sent.
+  function showWhen(node) {
+    var form = node.closest('form');
+    var rule = node.dataset.showWhen.split('=');
+    var values = rule[1].split(',');
+
+    function render() {
+      var shown = values.indexOf(checked(form, rule[0])) >= 0;
+      node.classList.toggle('hide', !shown);
+      each('input, select, textarea', function (input) { input.disabled = !shown; }, node);
+    }
+
+    form.addEventListener('change', function (event) {
+      if (event.target.name === rule[0]) render();
+    });
+    render();
+  }
+
+    // Shows how the amount being entered will be shared, like Plan#split.
   function splitPreview(form) {
     var split = data('split-data');
     var amountInput = form.querySelector('[data-amount]');

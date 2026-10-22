@@ -1,7 +1,8 @@
 <div class="login">
   <img class="logo" src="<%= asset_path('/icon.svg') %>" alt="" width="64" height="64">
-  <h1 class="center" style="font-size: 26px">Join Ega</h1>
-  <p class="center muted" style="margin: 0 auto 22px; max-width: 34ch">Split every income into pots, see what's safe to spend today, and save up for what you want.</p>
+  <h1 class="center" style="font-size: 28px; margin-bottom: 6px">Join Ega</h1>
+  <p class="center muted" style="margin: 0 auto 20px; max-width: 34ch">Split every income into pots, see what's safe to spend today, and build the habits that keep your money calm.</p>
+
   <% if error %><div class="flash error" role="alert"><%= error %></div><% end %>
   <form method="post" action="/signup" class="card">
     <div class="field">
@@ -30,5 +31,5 @@
     </div>
     <button class="btn block" type="submit">Create account</button>
   </form>
-  <p class="center small">Have an account? <a href="/login">Log in</a></p>
+  <p class="center small" style="margin-top: 14px">Have an account? <a href="/login">Log in</a></p>
 </div>

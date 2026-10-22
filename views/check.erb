@@ -39,6 +39,7 @@
     <label class="check" style="margin-top: 8px"><input type="radio" name="surplus" value="income" <%= 'checked' if form['surplus'] == 'income' %>> It's income I didn't record: split it</label>
   </div>
 
+  <%== erb :_back_field, layout: false %>
   <button class="btn block" type="submit">Save the balance</button>
 </form>
 <script type="application/json" id="balances"><%== json_for_script(balances) %></script>

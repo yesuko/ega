@@ -1,0 +1,17 @@
+<%# The form's button; or, when the bill's date passed before anything was
+    recorded here, "was it paid already?" with a button for each answer. %>
+<% if ask %>
+  <% monthly = form['repeats'].to_s.empty? || form['repeats'] == 'monthly' %>
+  <div class="callout">
+    <%== icon(:calendar, size: 18) %>
+    <div>
+      <%= short_date(ask[:date]) %> has passed. Was <%= monthly ? "#{ask[:date].strftime('%B')}'s" : 'that one' %> paid already?
+      <div class="step choices">
+        <button class="btn small" type="submit" name="passed" value="paid"><%= monthly ? 'Yes, start from' : 'Yes, next is' %> <%= short_date(ask[:next]) %></button>
+        <button class="btn small ghost" type="submit" name="passed" value="due">No, still to pay</button>
+      </div>
+    </div>
+  </div>
+<% else %>
+  <button class="btn block" type="submit"><%= label %></button>
+<% end %>

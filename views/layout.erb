@@ -18,21 +18,23 @@
   <script src="<%= asset_path('/app.js') %>" defer></script>
 </head>
 <body>
-  <div class="app">
-    <% if @title && current_user %>
-      <header class="topbar">
-        <% if @back %>
-          <a class="icon-btn" href="<%= @back %>" aria-label="Back"><%== icon(:chevron_left) %></a>
-        <% end %>
-        <h1><%= @title %></h1>
-      </header>
-    <% end %>
-    <main>
-      <% if (flash = take_flash) %>
-        <div class="flash <%= flash['kind'] %>" role="status"><%= flash['message'] %></div>
+  <div class="scroller">
+    <div class="app">
+      <% if @title && current_user %>
+        <header class="topbar">
+          <% if @back %>
+            <a class="icon-btn" href="<%= @back %>" aria-label="Back"><%== icon(:chevron_left) %></a>
+          <% end %>
+          <h1><%= @title %></h1>
+        </header>
       <% end %>
-      <%== yield %>
-    </main>
+      <main>
+        <% if (flash = take_flash) %>
+          <div class="flash <%= flash['kind'] %>" role="status"><%= flash['message'] %></div>
+        <% end %>
+        <%== yield %>
+      </main>
+    </div>
   </div>
 
   <% if current_user %>
@@ -49,7 +51,7 @@
 
     <dialog class="sheet" id="add-sheet" aria-label="Add">
       <div class="sheet-handle"></div>
-      <h2>Add</h2>
+      <h2 class="sheet-drag" tabindex="-1">Add</h2>
       <%== erb :_actions, layout: false %>
     </dialog>
   <% end %>

@@ -29,6 +29,7 @@
       <input type="text" id="note" name="note" value="<%= form['note'] %>" maxlength="120" placeholder="Optional">
     </div>
   </div>
+  <%== erb :_back_field, layout: false %>
   <button class="btn block" type="submit">Save</button>
 </form>
 <script type="application/json" id="balances"><%== json_for_script(balances) %></script>

@@ -1,0 +1,75 @@
+<%# What a pot holds and where: opened by tapping its card on the home screen. %>
+<% balance = plan.pot_balance(pot) %>
+<% held = current_user.accounts.filter_map { |a| (value = plan.balance_at(pot, a)).zero? ? nil : [a, value] } %>
+<% scale = [held.sum { |_, value| [value, 0].max }, 1].max %>
+<% home = pot.home_account_id && current_user.account(pot.home_account_id) %>
+<dialog class="sheet <%= pot_class(pot) %>" id="pot-<%= pot.id %>" aria-labelledby="pot-<%= pot.id %>-title">
+  <div class="sheet-handle"></div>
+  <div class="between sheet-drag" style="align-items: flex-start">
+    <div>
+      <h2 class="sheet-title" id="pot-<%= pot.id %>-title" tabindex="-1"><span class="badge sm"><%== icon(pot.icon, size: 16) %></span><%= pot.name %></h2>
+      <div class="sheet-figure <%= 'neg' if balance.negative? %>"><%= cedis(balance) %></div>
+      <p class="small muted" style="margin: 0"><%= pot.percent %>% of each income · <%= home ? "lives in #{home.name}" : 'lives anywhere' %></p>
+    </div>
+    <form method="dialog"><button class="icon-btn soft" aria-label="Close"><%== icon(:x, size: 18) %></button></form>
+  </div>
+
+  <h3 class="sheet-section">By account</h3>
+  <% if held.empty? %>
+    <p class="small muted" style="margin: 6px 0 0">Nothing in it yet.</p>
+  <% else %>
+    <div class="rows">
+      <% held.each do |account, value| %>
+        <div class="row">
+          <span class="badge sm c-muted"><%== icon(account.icon, size: 16) %></span>
+          <div class="grow">
+            <div class="between"><span class="title"><%= account.name %></span><span class="num <%= 'neg' if value.negative? %>"><%= cedis(value) %></span></div>
+            <div class="meter thin"><i style="width: <%= value.positive? ? percent_of(value, scale) : 0 %>%"></i></div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if pot.kind == 'living' %>
+    <h3 class="sheet-section">Bills</h3>
+    <% if bills.empty? %>
+      <p class="small muted" style="margin: 6px 0 0">Add rent, electricity, school fees and other bills, and <%= pot.name %> keeps their money back, so "Safe to spend today" only counts what's free.</p>
+      <div class="step"><a class="btn small ghost" href="<%= with_back('/bills') %>"><%== icon(:plus, size: 16) %>Add bills</a></div>
+    <% else %>
+      <div class="rows">
+        <% bills.each do |bill| %>
+          <% owed = bills_due.find { |d| d[:bill].id == bill.id } %>
+          <% saved = bill_savings.find { |s| s[:bill].id == bill.id } %>
+          <% payment = bills_paid[bill.id] %>
+          <div class="row">
+            <div class="grow">
+              <div class="title"><%= bill.name %> · <%= cedis(bill.amount, short: true) %></div>
+              <div class="sub">
+                <% if owed %><span class="<%= 'neg' if owed[:overdue] %>"><%= owed[:overdue] ? "Overdue since #{short_date(owed[:due_on])}" : "Due #{short_date(owed[:due_on])}" %></span><% elsif saved %><%= cedis(saved[:kept], short: true) %> set aside for <%= short_date(saved[:due_on]) %><% elsif payment %>Paid <%= short_date(payment.occurred_on) %><% elsif bill.monthly? && bill.starts_on %>Starts <%= short_date(bill.due_on(bill.starts_on)) %><% end %>
+              </div>
+            </div>
+            <% if owed %>
+              <a class="btn small" href="<%= with_back("/spend/new?#{URI.encode_www_form(pot_id: pot.id, amount: Money.input(bill.amount), bill: bill.id, note: bill.name)}") %>">Pay</a>
+            <% elsif payment %>
+              <%== icon(:check, size: 18, css_class: 'pos') %>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+      <div class="step"><a class="btn small ghost" href="<%= with_back('/bills') %>">Manage bills</a></div>
+    <% end %>
+  <% end %>
+
+  <h3 class="sheet-section"><%= today.strftime('%B') %></h3>
+  <div class="figures two">
+    <div><span>From income</span><strong class="pos">+<%= Money.format(month[:into].fetch(pot.id, 0)) %></strong></div>
+    <div><span>Spent</span><strong><%= Money.format(month[:spent].fetch(pot.id, 0)) %></strong></div>
+  </div>
+
+  <div class="actions" style="margin-top: 16px">
+    <a class="action" href="/move/new"><%== icon(:arrow_left_right) %>Move money</a>
+    <a class="action" href="/shift/new?from=<%= pot.id %>"><%== icon(:refresh) %>Pot to pot</a>
+    <a class="action" href="<%= with_back("/activity?pot=#{pot.id}") %>" style="grid-column: 1 / -1"><%== icon(:list) %>See activity</a>
+  </div>
+</dialog>

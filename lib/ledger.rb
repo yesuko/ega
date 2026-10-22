@@ -20,8 +20,10 @@ class Ledger
     end
   end
 
-  def spend(amount:, pot:, account:, on:, note: nil, external_ref: nil)
-    record('spend', amount: amount, on: on, note: note, external_ref: external_ref) do |lines|
+  # bill: the Living bill this pays, for the month bill_month (see Plan#bill_month_for).
+  def spend(amount:, pot:, account:, on:, note: nil, external_ref: nil, payee: nil, bill: nil, bill_month: nil)
+    record('spend', amount: amount, on: on, note: note, external_ref: external_ref, payee: payee,
+                    bill_id: bill&.id, bill_month: bill && bill_month) do |lines|
       lines << [pot, account, -amount, 'spend']
     end
   end
@@ -65,6 +67,18 @@ class Ledger
   def opening(rows, on:)
     record('opening', amount: rows.sum { |_, _, value| value }, on: on, note: 'Starting balances') do |lines|
       rows.each { |pot, account, value| lines << [pot, account, value, 'opening'] }
+    end
+  end
+
+  # Saves the starting balances in place of any saved before, keeping the
+  # first date, so saving the page again never counts money twice. No rows
+  # clears them.
+  def starting_balances(rows, on:)
+    DB.transaction do
+      saved = Transaction.where(user_id: user.id, kind: 'opening')
+      first = saved.min(:occurred_on)
+      saved.all.each { |txn| delete(txn) }
+      opening(rows, on: first ? Date.parse(first.to_s) : on) if rows.any?
     end
   end
 
@@ -128,12 +142,14 @@ class Ledger
   end
 
   # Removes an event and puts back the Buy List item or investment it changed.
-  # An investment's first event removes the investment with it.
+  # An investment's first event removes the investment with it, and an entry
+  # saved from the SMS inbox goes back there to be recorded again.
   def delete(txn)
     DB.transaction do
       data = txn.snapshot_data
       investment = txn.investment
       item = txn.buy_item
+      InboxMessage.where(transaction_id: txn.id).update(status: 'pending', transaction_id: nil, updated_at: Time.now)
       Entry.where(transaction_id: txn.id).delete
       txn.delete
       if investment

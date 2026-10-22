@@ -40,6 +40,14 @@ class Plan
     balances.values.sum
   end
 
+  # What the saved starting balances put in each pot and account:
+  # {[account_id, pot_id] => pesewas}.
+  def starting_balances
+    openings = Transaction.where(user_id: user.id, kind: 'opening').select(:id)
+    entries.where(transaction_id: openings).select_group(:account_id, :pot_id).select_append { sum(:amount).as(:total) }
+           .to_h { |row| [[row[:account_id], row[:pot_id]], row[:total].to_i] }
+  end
+
   # How an income is shared between the pots. Pesewas lost to rounding go to
   # Future Me, and so does Living's share once this month's living target is met.
   def split(amount, on = today)
@@ -83,6 +91,145 @@ class Plan
     start = balance + spent
     allowance = start.positive? ? start / days : 0
     { allowance: allowance, spent: spent, left: allowance - spent, days: days, balance: balance, next_income_on: next_income_on }
+  end
+
+  # Bills Living has to keep their whole amount back for now: this month's
+  # that aren't paid yet (overdue ones included), and those falling due by the
+  # next income. Each: {bill:, month:, due_on:, overdue:}.
+  def bills_due
+    @bills_due ||= begin
+      this_month = Date.new(today.year, today.month, 1)
+      active_bills.flat_map do |bill|
+        if bill.monthly?
+          [this_month, this_month >> 1].filter_map do |month|
+            due = bill.due_on(month)
+            next if bill_paid?(bill, month)
+            next if bill.starts_on && month < bill.starts_on
+            next if month != this_month && due >= next_income_on
+
+            { bill: bill, month: month, due_on: due, overdue: due < today }
+          end
+        else
+          due = bill_date(bill)
+          next [] unless due && (due < this_month >> 1 || due <= next_income_on)
+
+          [{ bill: bill, month: month_start(due), due_on: due, overdue: due < today }]
+        end
+      end
+    end
+  end
+
+  # Bills that aren't monthly and aren't due yet. Living sets their money
+  # aside a share at a time, on each income between the last pay-by date (or
+  # the day the bill was added) and the next, so it's all there in time.
+  # Each: {bill:, due_on:, kept:, per_income:, incomes:, next_on:, next_share:}.
+  def bill_savings
+    @bill_savings ||= begin
+      due = bills_due.map { |d| d[:bill].id }
+      active_bills.filter_map do |bill|
+        next if bill.monthly? || due.include?(bill.id)
+
+        date = bill_date(bill)
+        next unless date
+
+        since = [bill.date_before(date), bill.created_at.to_date].compact.max
+        steps = income_dates(since, date)
+        done = steps.count { |day| day <= today }
+        kept = steps.empty? ? bill.amount : bill.amount * done / steps.size
+        next_on = steps[done]
+        {
+          bill: bill, due_on: date, kept: kept, per_income: (bill.amount.to_f / [steps.size, 1].max).ceil,
+          incomes: steps.size, next_on: next_on, next_share: next_on && (bill.amount * (done + 1) / steps.size) - kept
+        }
+      end
+    end
+  end
+
+  # The pay-by date a bill that isn't monthly is working towards: its latest
+  # one while that's unpaid (overdue), else the next unpaid one. nil once a
+  # one-off is paid.
+  def bill_date(bill)
+    bill.dates_from(today).find { |date| !bill_paid?(bill, month_start(date)) }
+  end
+
+  # The day the first thing was recorded here (today when nothing is yet).
+  # Anything paid before it was paid outside the app.
+  def started_on
+    @started_on ||= to_date(Transaction.where(user_id: user.id).min(:occurred_on)) || today
+  end
+
+  # A bill (being added or edited) whose latest date has passed, before the
+  # first record here and unpaid: it was probably paid outside the app, so
+  # the form asks. {date:, next:} or nil. Not asked twice, nor for a one-off.
+  def bill_passed_unrecorded(bill)
+    return nil if bill.once? || bill.starts_on
+
+    this_month = Date.new(today.year, today.month, 1)
+    date = bill.monthly? ? bill.due_on(this_month) : bill_date(bill)
+    return nil unless date && date < today && date < started_on && !bill_paid?(bill, month_start(date))
+
+    following = bill.monthly? ? bill.due_on(this_month >> 1) : bill.dates_from(today).find { |day| day > today }
+    { date: date, next: following }
+  end
+
+  # The month a payment for this bill counts towards. Monthly: its oldest
+  # unpaid month, else the month it was paid in. Others: the month of the
+  # pay-by date it's working towards.
+  def bill_month_for(bill, on = today)
+    date = bill.monthly? ? bills_due.find { |due| due[:bill].id == bill.id }&.dig(:month) : bill_date(bill)
+    month_start(date || on)
+  end
+
+  # The payment to show for each active bill: this month's for a monthly
+  # bill, the latest for others. {bill_id => Transaction}.
+  def bills_paid
+    this_month = Date.new(today.year, today.month, 1)
+    monthly = active_bills.select(&:monthly?).map(&:id)
+    Transaction.where(user_id: user.id, bill_id: active_bills.map(&:id)).order(:occurred_on, :id).all
+               .select { |txn| !monthly.include?(txn.bill_id) || to_date(txn.bill_month) == this_month }
+               .to_h { |txn| [txn.bill_id, txn] }
+  end
+
+  # Roughly what the bills need from Living a month: monthly ones in full, a
+  # term's or a year's spread over its months, and a one-off's share of each
+  # income while it's being saved for.
+  def bills_monthly
+    active_bills.sum do |bill|
+      if bill.monthly? then bill.amount
+      elsif bill.once? then bill_savings.find { |saving| saving[:bill].id == bill.id }&.dig(:per_income).to_i
+      else bill.amount / Bill::MONTHS.fetch(bill.repeats)
+      end
+    end
+  end
+
+  # Today's share of Living for everyday costs (food, transport, data): what
+  # Living holds beyond the bills due and what's set aside for bigger ones,
+  # spread over the days to the next income, less what everyday costs have
+  # taken today. Paying a bill doesn't count against it: the money was
+  # already kept back.
+  def living_today
+    living = user.pot('living')
+    days = [(next_income_on - today).to_i, 1].max
+    saving = bill_savings.select { |s| s[:kept].positive? }
+    kept = bills_due.sum { |due| due[:bill].amount } + saving.sum { |s| s[:kept] }
+    bill_payments = Transaction.where(user_id: user.id).exclude(bill_id: nil).select(:id)
+    spent = -entries.where(pot_id: living.id, flow: Entry::SPENDING, occurred_on: today)
+                    .exclude(transaction_id: bill_payments).sum(:amount).to_i
+    free = pot_balance(living) - kept
+    start = free + spent
+    allowance = start.positive? ? start / days : 0
+    bills = (bills_due + saving).map { |item| item[:bill].id }.uniq.size
+    { allowance: allowance, spent: spent, left: allowance - spent, days: days, kept: kept, free: free, bills: bills }
+  end
+
+  # The pot the last spend to this payee came from, to suggest it again.
+  def pot_for_payee(payee)
+    name = payee.to_s.strip.downcase
+    return nil if name.empty?
+
+    txn = Transaction.where(user_id: user.id, kind: 'spend').where(Sequel.function(:lower, :payee) => name).reverse(:id).first
+    pot_id = txn && Entry.where(transaction_id: txn.id).order(:id).get(:pot_id)
+    user.pots.find { |pot| pot.id == pot_id }
   end
 
   # Transfers that would put each pot's money where it belongs: out of the
@@ -157,9 +304,13 @@ class Plan
     { items: items, spare: available, rate: rate }
   end
 
-  # What Buy List received from income per 30 days over the last 90 (or since
-  # the first entry); nil until there are two weeks of history.
   def buy_monthly_rate
+    income_rate(user.pot('buy'))
+  end
+
+  # What a pot received from income per 30 days over the last 90 (or since
+  # the first entry); nil until there are two weeks of history.
+  def income_rate(pot)
     first = to_date(entries.min(:occurred_on))
     return nil unless first
 
@@ -167,7 +318,7 @@ class Plan
     days = (today - from).to_i + 1
     return nil if days < 14
 
-    received = entries.where(pot_id: user.pot('buy').id, flow: 'income', occurred_on: from..today).sum(:amount).to_i
+    received = entries.where(pot_id: pot.id, flow: 'income', occurred_on: from..today).sum(:amount).to_i
     received * 30 / days
   end
 
@@ -237,6 +388,33 @@ class Plan
   end
 
   private
+
+  def active_bills
+    @active_bills ||= Bill.where(user_id: user.id).active.all
+  end
+
+  def bill_paid?(bill, month)
+    @paid_months ||= Transaction.where(user_id: user.id).exclude(bill_id: nil).select_map([:bill_id, :bill_month])
+                                .to_set { |id, paid_month| [id, to_date(paid_month)] }
+    @paid_months.include?([bill.id, month])
+  end
+
+  # The days income is expected after from and before to: each payday, or the
+  # first of each month when income is irregular.
+  def income_dates(from, to)
+    dates = []
+    month = Date.new(from.year, from.month, 1)
+    while month < to
+      day = user.payday ? day_in_month(month, user.payday) : month
+      dates << day if day > from && day < to
+      month >>= 1
+    end
+    dates
+  end
+
+  def month_start(date)
+    Date.new(date.year, date.month, 1)
+  end
 
   # Where to take a pot's money from to cover it in an account where it went
   # below zero: its home account, else wherever it holds the most.

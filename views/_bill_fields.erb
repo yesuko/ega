@@ -1,0 +1,29 @@
+<%# What a bill is, how often it comes and when: for adding and editing one. %>
+<% repeats = Bill::REPEATS.key?(form['repeats']) ? form['repeats'] : 'monthly' %>
+<div class="field">
+  <label class="label" for="name">What</label>
+  <input type="text" id="name" name="name" value="<%= form['name'] %>" maxlength="40" placeholder="Rent, ECG, school fees, allowance…" required>
+</div>
+<div class="field">
+  <span class="label">Repeats</span>
+  <div class="chips">
+    <% Bill::REPEATS.each do |value, label| %>
+      <label class="chip"><input type="radio" name="repeats" value="<%= value %>" <%= 'checked' if repeats == value %>><span><%= label %></span></label>
+    <% end %>
+  </div>
+</div>
+<div class="row2">
+  <div class="field">
+    <label class="label" for="amount">Usually (GH₵)</label>
+    <input type="text" id="amount" name="amount" value="<%= form['amount'] %>" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
+  </div>
+  <div class="field <%= 'hide' unless repeats == 'monthly' %>" data-show-when="repeats=monthly">
+    <label class="label" for="due_day">Due on day</label>
+    <input type="number" id="due_day" name="due_day" value="<%= form['due_day'] %>" min="1" max="31" placeholder="Any time">
+  </div>
+  <div class="field <%= 'hide' if repeats == 'monthly' %>" data-show-when="repeats=termly,yearly,once">
+    <label class="label" for="pay_by">Pay by</label>
+    <input type="date" id="pay_by" name="pay_by" value="<%= form['pay_by'] %>">
+  </div>
+</div>
+<p class="hint <%= 'hide' if repeats == 'monthly' %>" data-show-when="repeats=termly,yearly,once" style="margin: -6px 4px 14px">Living sets a little aside from each income, so it's all there by then.</p>

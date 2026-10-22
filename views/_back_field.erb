@@ -1,0 +1,2 @@
+<%# Carries the page a form was opened from, so saving (or its back arrow) returns there. %>
+<% if (back = back_path(nil)) %><input type="hidden" name="back" value="<%= back %>"><% end %>

@@ -44,6 +44,7 @@ require_relative 'models/investment'
 require_relative 'models/transaction'
 require_relative 'models/entry'
 require_relative 'models/inbox_message'
+require_relative 'models/bill'
 require_relative 'lib/plan'
 require_relative 'lib/ledger'
 
@@ -98,6 +99,11 @@ helpers do
     whole.to_i.positive? ? (part * 100.0 / whole).round.clamp(0, 100) : 0
   end
 
+  # Pesewas rounded to whole cedis, for "about GH₵ 750 a month".
+  def about(pesewas)
+    (pesewas / 100.0).round * 100
+  end
+
   # For embedding data in <script type="application/json">: escaping <, > and &
   # stops user-supplied values from closing the script tag.
   def json_for_script(obj)
@@ -112,6 +118,14 @@ helpers do
 
   def notice(kind, message)
     session[:flash] = { 'kind' => kind, 'message' => message }
+  end
+
+  def daily_money_quote(user = current_user)
+    return nil if user && !user.show_money_quote
+
+    base = user ? user.id.to_i : 0
+    index = (Date.today.yday + base) % User::MONEY_QUOTES.length
+    User::MONEY_QUOTES[index]
   end
 
   def take_flash
@@ -170,10 +184,33 @@ helpers do
     end
   end
 
+  def active_bills
+    @active_bills ||= Bill.where(user_id: current_user.id).active.all
+  end
+
+  # One of this user's bills (an inactive one too, when it's already set).
+  def find_bill(id)
+    id.to_s.empty? ? nil : Bill.first(id: id.to_i, user_id: current_user.id)
+  end
+
   # A model's first validation error as a sentence: "Matures on must be after the start date".
   def first_error(model)
     attribute, messages = model.errors.first
     attribute && "#{attribute.to_s.tr('_', ' ').capitalize} #{messages.first}"
+  end
+
+  # Where the back arrow (and a saved form) goes: the page the link came
+  # from when it said so (?back=/inbox), else the page's usual parent. Only
+  # paths on this site are accepted.
+  def back_path(default)
+    path = params[:back].to_s
+    local = path.start_with?('/') && !path.start_with?('//') && !path.include?('\\') && !path.match?(/[[:cntrl:]]/)
+    local ? path : default
+  end
+
+  # A link to path whose back arrow returns to the current page (or to back).
+  def with_back(path, back = request.fullpath)
+    "#{path}#{path.include?('?') ? '&' : '?'}#{URI.encode_www_form(back: back)}"
   end
 
   def blank_to_nil(value)
@@ -242,7 +279,8 @@ helpers do
   # spending are signed; moves only show their size.
   def txn_amount(txn)
     case txn.kind
-    when 'income', 'spend', 'check', 'growth' then [signed(txn.net), txn.net.negative? ? 'neg' : 'pos']
+    # Money out gets a soft red; the alarm red is for a fall in an investment's value.
+    when 'income', 'spend', 'check', 'growth' then [signed(txn.net), txn.net.negative? ? (txn.kind == 'growth' ? 'neg' : 'out') : 'pos']
     else [cedis(txn.amount), '']
     end
   end
@@ -257,7 +295,7 @@ end
 get '/login' do
   redirect '/' if current_user
   @title = 'Log in'
-  erb :login, locals: { error: nil, email: '' }
+  erb :login, locals: { error: nil, email: '', quote: daily_money_quote }
 end
 
 post '/login' do
@@ -271,7 +309,7 @@ post '/login' do
   APP_LOGGER.warn("Failed login for #{email}")
   @title = 'Log in'
   status 422
-  erb :login, locals: { error: 'That email and password don’t match.', email: email }
+  erb :login, locals: { error: 'That email and password don’t match.', email: email, quote: daily_money_quote }
 end
 
 post '/logout' do
@@ -319,10 +357,12 @@ get '/' do
   erb :home, locals: {
     safe: plan.safe_to_spend, moves: plan.suggested_moves, unbanked: plan.unbanked_cash,
     cooled: plan.cooled_items, maturities: plan.maturities, emergency: plan.emergency,
-    buy: plan.buy_list, overdrawn: plan.overdrawn,
+    buy: plan.buy_list, overdrawn: plan.overdrawn, month: plan.review(today), living: plan.living_today,
+    bills: active_bills, bills_due: plan.bills_due, bills_paid: plan.bills_paid, bill_savings: plan.bill_savings,
     recent: Transaction.where(user_id: current_user.id).latest_first.limit(5).eager(entries: [:pot, :account]).all,
     started: Transaction.where(user_id: current_user.id).any?,
-    inbox_count: InboxMessage.where(user_id: current_user.id, status: 'pending').count
+    inbox_count: InboxMessage.where(user_id: current_user.id, status: 'pending').count,
+    quote: daily_money_quote(current_user)
   }
 end
 
@@ -339,7 +379,7 @@ end
 
 get '/learn' do
   @title = 'Investing in Ghana'
-  @back = '/invest'
+  @back = back_path('/invest')
   erb :learn
 end
 
@@ -349,7 +389,7 @@ helpers do
   def income_page(form, error: nil)
     status 422 if error
     @title = 'Money in'
-    @back = '/'
+    @back = back_path('/')
     used = Transaction.where(user_id: current_user.id, kind: 'income').exclude(source: nil)
                       .reverse(:id).limit(30).select_map(:source)
     room = plan.living_room
@@ -390,7 +430,7 @@ post '/income' do
   parts = txn.entries.map { |e| "#{e.pot.name} #{Money.format(e.amount, short: true)}" }.join(' · ')
   covered = " #{current_user.pot('living').name}'s target for the month is met, so #{cedis(overflow, short: true)} of its share went to #{current_user.pot('future').name}." if overflow.positive?
   notice 'success', "#{cedis(amount)} in. #{parts}.#{covered}"
-  redirect '/'
+  redirect back_path('/')
 end
 
 # --- Spending -----------------------------------------------------------------
@@ -399,24 +439,26 @@ helpers do
   def spend_page(form, error: nil)
     status 422 if error
     @title = 'Money out'
-    @back = '/'
-    erb :spend, locals: { form: form, error: error, safe: plan.safe_to_spend }
+    @back = back_path('/')
+    erb :spend, locals: { form: form, error: error, safe: plan.safe_to_spend, bills: active_bills }
   end
 end
 
 get '/spend/new' do
+  pot = find_pot(params[:pot_id]) || plan.pot_for_payee(params[:payee]) || current_user.pot('living')
   spend_page({
-    'amount' => params[:amount], 'pot_id' => (params[:pot_id] || current_user.pot('enjoy').id).to_s,
+    'amount' => params[:amount], 'pot_id' => pot.id.to_s,
     'account_id' => (params[:account_id] || default_account_id('spend')).to_s,
     'occurred_on' => params[:on] || today.iso8601, 'note' => params[:note], 'external_ref' => params[:ref],
-    'inbox_id' => params[:inbox]
+    'inbox_id' => params[:inbox], 'payee' => params[:payee], 'bill_id' => params[:bill]
   })
 end
 
 post '/spend' do
-  form = params.slice('amount', 'pot_id', 'account_id', 'occurred_on', 'note', 'external_ref', 'inbox_id')
+  form = params.slice('amount', 'pot_id', 'account_id', 'occurred_on', 'note', 'external_ref', 'inbox_id', 'payee', 'bill_id')
   amount = Money.parse(form['amount'])
-  pot = find_pot(form['pot_id'])
+  bill = find_bill(form['bill_id'])
+  pot = bill ? current_user.pot('living') : find_pot(form['pot_id'])
   account = find_account(form['account_id'])
   on = parse_date(form['occurred_on'])
   error = if !amount&.positive? then 'Enter the amount you spent, like 25 or 25.50.'
@@ -427,15 +469,16 @@ post '/spend' do
   return spend_page(form, error: error) if error
 
   txn = ledger.spend(amount: amount, pot: pot, account: account, on: on, note: blank_to_nil(form['note']),
-                     external_ref: blank_to_nil(form['external_ref']))
+                     external_ref: blank_to_nil(form['external_ref']), payee: blank_to_nil(form['payee']),
+                     bill: bill, bill_month: bill && plan.bill_month_for(bill, on))
   close_inbox_message(form['inbox_id'], txn)
-  message = "Spent #{cedis(amount)} from #{pot.name}."
+  message = bill ? "Paid #{bill.name}: #{cedis(amount)} from #{pot.name}. It's marked paid." : "Spent #{cedis(amount)} from #{pot.name}."
   if pot.kind == 'enjoy' && on == today
     left = Plan.new(current_user).safe_to_spend[:left]
     message += left.negative? ? " You're #{cedis(-left)} over today's share." : " #{cedis(left)} left to spend today."
   end
   notice 'success', message
-  redirect '/'
+  redirect back_path('/')
 end
 
 # --- Moves between accounts ---------------------------------------------------
@@ -444,7 +487,7 @@ helpers do
   def move_page(form, error: nil)
     status 422 if error
     @title = 'Move money'
-    @back = '/'
+    @back = back_path('/')
     erb :move, locals: { form: form, error: error, balances: balances_by_account }
   end
 end
@@ -483,7 +526,7 @@ post '/move' do
   txn = ledger.move(parts: parts, from: from, to: to, on: on, note: blank_to_nil(form['note']), fee: fee, fee_pot: fee_pot)
   close_inbox_message(form['inbox_id'], txn)
   notice 'success', "Moved #{cedis(parts.values.sum)} from #{from.name} to #{to.name}."
-  redirect '/'
+  redirect back_path('/')
 end
 
 # --- Pot to pot ---------------------------------------------------------------
@@ -492,7 +535,7 @@ helpers do
   def shift_page(form, error: nil)
     status 422 if error
     @title = 'Pot to pot'
-    @back = '/'
+    @back = back_path('/')
     erb :shift, locals: { form: form, error: error, balances: balances_by_account }
   end
 end
@@ -523,7 +566,7 @@ post '/shift' do
 
   ledger.shift(amount: amount, from_pot: from, to_pot: to, account: account, on: on, note: blank_to_nil(form['note']))
   notice 'success', "Gave #{cedis(amount)} from #{from.name} to #{to.name}."
-  redirect '/'
+  redirect back_path('/')
 end
 
 # --- Balance check ------------------------------------------------------------
@@ -532,7 +575,7 @@ helpers do
   def check_page(form, error: nil)
     status 422 if error
     @title = 'Check a balance'
-    @back = '/'
+    @back = back_path('/')
     erb :check, locals: {
       form: form, error: error, balances: balances_by_account,
       totals: current_user.cash_accounts.to_h { |a| [a.id, plan.account_balance(a)] }
@@ -566,15 +609,19 @@ post '/check' do
             else "Added #{cedis(difference)} to #{pot.name}."
             end
   notice 'success', txn ? "#{message} #{account.name} now shows #{cedis(actual)}." : message
-  redirect '/'
+  redirect back_path('/')
 end
 
 # --- Starting balances --------------------------------------------------------
 
 get '/setup' do
   @title = 'Starting balances'
-  @back = '/'
-  erb :setup, locals: { values: {}, error: nil }
+  @back = back_path('/')
+  values = {}
+  plan.starting_balances.each do |(account_id, pot_id), amount|
+    (values[account_id.to_s] ||= {})[pot_id.to_s] = Money.input(amount) if amount.positive?
+  end
+  erb :setup, locals: { values: values, error: nil, saved: values.any? }
 end
 
 post '/setup' do
@@ -591,18 +638,19 @@ post '/setup' do
       rows << [pot, account, amount] if amount&.positive?
     end
   end
+  saved = plan.starting_balances.any?
   error = if invalid then 'Enter amounts like 1500 or 1,500.00.'
-          elsif rows.empty? then 'Enter at least one amount.'
+          elsif rows.empty? && !saved then 'Enter at least one amount.'
           end
   if error
     @title = 'Starting balances'
-    @back = '/'
+    @back = back_path('/')
     status 422
-    return erb :setup, locals: { values: values, error: error }
+    return erb :setup, locals: { values: values, error: error, saved: saved }
   end
 
-  ledger.opening(rows, on: today)
-  notice 'success', "Starting balances saved: #{cedis(rows.sum { |_, _, v| v })} in total."
+  ledger.starting_balances(rows, on: today)
+  notice 'success', rows.empty? ? 'Starting balances cleared.' : "Starting balances saved: #{cedis(rows.sum { |_, _, v| v })} in total."
   redirect '/'
 end
 
@@ -626,7 +674,7 @@ get '/activity' do
   first = Transaction.where(user_id: current_user.id).min(:occurred_on)
   first = Date.parse(first) if first.is_a?(String)
   @title = 'Activity'
-  @back = '/more'
+  @back = back_path('/more')
   erb :activity, locals: {
     month: month, pot: pot, account: account, kind: kind,
     days: dataset.latest_first.eager(:investment, entries: [:pot, :account]).all.group_by(&:occurred_on),
@@ -637,8 +685,27 @@ end
 get '/transactions/:id' do
   txn = find_txn!
   @title = txn.kind_label
-  @back = '/activity'
+  @back = back_path('/activity')
   erb :transaction, locals: { txn: txn }
+end
+
+# Moves a single-pot spend to another pot, and sets the Living bill it pays.
+post '/transactions/:id/pot' do
+  txn = find_txn!
+  entry = txn.entries.first
+  bill = find_bill(params[:bill_id])
+  pot = bill ? current_user.pot('living') : find_pot(params[:pot_id])
+  if !txn.pot_changeable? || pot.nil?
+    notice 'error', 'This entry can only be changed by deleting it and recording it again.'
+  else
+    month = bill && (txn.bill_id == bill.id && txn.bill_month || plan.bill_month_for(bill, txn.occurred_on))
+    DB.transaction do
+      entry.update(pot_id: pot.id)
+      txn.update(bill_id: bill&.id, bill_month: month)
+    end
+    notice 'success', bill ? "Now in #{pot.name}, paying #{bill.name}." : "Moved to #{pot.name}."
+  end
+  redirect back_path(nil) ? with_back("/transactions/#{txn.id}", back_path(nil)) : "/transactions/#{txn.id}"
 end
 
 post '/transactions/:id/delete' do
@@ -650,7 +717,7 @@ post '/transactions/:id/delete' do
   investment_id = txn.investment_id
   ledger.delete(txn)
   notice 'success', 'Deleted. Balances are back to how they were before it.'
-  redirect investment_id && Investment[investment_id] ? "/invest/#{investment_id}" : '/activity'
+  redirect investment_id && Investment[investment_id] ? "/invest/#{investment_id}" : back_path('/activity')
 end
 
 # --- Buy List -----------------------------------------------------------------
@@ -831,7 +898,7 @@ helpers do
   def investment_page(investment, error: nil, form: {})
     status 422 if error
     @title = investment.name
-    @back = '/invest'
+    @back = back_path('/invest')
     erb :investment, locals: { investment: investment, error: error, form: form, history: investment.transactions_dataset.all }
   end
 
@@ -988,6 +1055,125 @@ post '/invest/:id/undo' do
   redirect '/invest'
 end
 
+# --- Bills (paid from Living) --------------------------------------------------
+
+BILL_FIELDS = %w[name amount repeats due_day pay_by].freeze
+
+helpers do
+  def find_bill!
+    Bill.first(id: params[:id].to_i, user_id: current_user.id, active: true) || halt(404, 'Not found')
+  end
+
+  def bills_page(form: {}, error: nil, ask: nil)
+    status 422 if error
+    @title = 'Bills'
+    @back = back_path('/')
+    erb :bills, locals: { form: form, error: error, ask: ask, bills: active_bills, due: plan.bills_due, saving: plan.bill_savings,
+                          paid: plan.bills_paid, living: plan.living_today, need: plan.bills_monthly,
+                          gets: plan.income_rate(current_user.pot('living')), started_on: plan.started_on }
+  end
+
+  def bill_edit_page(bill, form, error: nil, ask: nil)
+    @title = 'Edit bill'
+    @back = '/bills'
+    status 422 if error
+    erb :bill_edit, locals: { bill: bill, form: form, error: error, ask: ask }
+  end
+
+  # The answer to "it has passed: was it paid already?" (paid or due), or nil
+  # while it still needs asking.
+  def passed_answer(passed)
+    passed && (%w[paid due].include?(params[:passed]) ? params[:passed] : nil)
+  end
+
+  # Paid already: the bill starts from its next date. Still to pay: it counts
+  # from the date that passed.
+  def answer_passed(bill, passed, answer)
+    if answer == 'due'
+      bill.starts_on = Date.new(passed[:date].year, passed[:date].month, 1)
+    else
+      bill.pay_by = passed[:next] unless bill.monthly?
+      bill.starts_on = Date.new(passed[:next].year, passed[:next].month, 1)
+    end
+  end
+
+  # A monthly bill has a day of the month (or none); the others a pay-by date.
+  def assign_bill(bill, form)
+    repeats = Bill::REPEATS.key?(form['repeats']) ? form['repeats'] : 'monthly'
+    day = form['due_day'].to_s.strip
+    bill.set(name: form['name'].to_s.strip, amount: Money.parse(form['amount']), repeats: repeats,
+             due_day: repeats != 'monthly' || day.empty? ? nil : Integer(day, exception: false) || -1,
+             pay_by: repeats == 'monthly' ? nil : parse_date(form['pay_by']))
+  end
+
+  # What Living does about a bill just added.
+  def bill_promise(bill)
+    if bill.monthly? && bill.starts_on && bill.starts_on > Date.new(today.year, today.month, 1)
+      return "It starts from #{short_date(bill.due_on(bill.starts_on))}."
+    end
+
+    saving = Plan.new(current_user, today: today).bill_savings.find { |s| s[:bill].id == bill.id }
+    return "Living keeps #{cedis(bill.amount, short: true)} back for it until it's paid." unless saving
+
+    ready = "so it's all there by #{short_date(saving[:due_on])}."
+    return "Living keeps #{cedis(bill.amount, short: true)} back for it from #{short_date(saving[:next_on])}, #{ready}" if saving[:incomes] == 1
+
+    "Living sets aside about #{cedis(about(saving[:per_income]), short: true)} a month for it, #{ready}"
+  end
+end
+
+get '/bills' do
+  bills_page
+end
+
+post '/bills' do
+  form = params.slice(*BILL_FIELDS)
+  bill = assign_bill(Bill.new(user_id: current_user.id), form)
+  return bills_page(form: form, error: first_error(bill)) unless bill.valid?
+
+  passed = plan.bill_passed_unrecorded(bill)
+  answer = passed_answer(passed)
+  return bills_page(form: form, ask: passed) if passed && !answer
+
+  answer_passed(bill, passed, answer) if passed
+  bill.save
+  notice 'success', "Added #{bill.name}. #{bill_promise(bill)}"
+  redirect back_path(nil) ? with_back('/bills', back_path(nil)) : '/bills'
+end
+
+get '/bills/:id/edit' do
+  bill = find_bill!
+  @title = 'Edit bill'
+  @back = with_back('/bills', back_path('/'))
+  pay_by = bill.monthly? ? nil : plan.bill_date(bill) || bill.pay_by # the date it's working towards now
+  form = { 'name' => bill.name, 'amount' => Money.input(bill.amount), 'repeats' => bill.repeats, 'due_day' => bill.due_day, 'pay_by' => pay_by&.iso8601 }
+  erb :bill_edit, locals: { bill: bill, form: form, error: nil, ask: nil }
+end
+
+post '/bills/:id' do
+  bill = find_bill!
+  form = params.slice(*BILL_FIELDS)
+  assign_bill(bill, form)
+  return bill_edit_page(bill, form, error: first_error(bill)) unless bill.valid?
+
+  passed = plan.bill_passed_unrecorded(bill)
+  answer = passed_answer(passed)
+  return bill_edit_page(bill, form, ask: passed) if passed && !answer
+
+  answer_passed(bill, passed, answer) if passed
+  bill.save
+  notice 'success', 'Saved.'
+  redirect back_path(nil) ? with_back('/bills', back_path(nil)) : '/bills'
+end
+
+# Bills with payments are kept (inactive) so those entries still say what they paid.
+post '/bills/:id/delete' do
+  bill = find_bill!
+  bill.payments_dataset.any? ? bill.update(active: false) : bill.destroy
+  notice 'success', "Removed #{bill.name}."
+  redirect back_path(nil) ? with_back('/bills', back_path(nil)) : '/bills'
+end
+
 # --- Monthly review -----------------------------------------------------------
 
 get '/review' do
@@ -995,7 +1181,7 @@ get '/review' do
   month = parse_month(params[:month]) || this_month
   month = this_month if month > this_month
   @title = 'Monthly review'
-  @back = '/more'
+  @back = back_path('/more')
   erb :review, locals: { month: month, review: plan.review(month), this_month: this_month }
 end
 
@@ -1047,7 +1233,7 @@ helpers do
     notes = message.notes
     {
       income: "/income/new?#{URI.encode_www_form(common.merge(amount: Money.input(message.amount), note: notes[:in]))}",
-      spend: "/spend/new?#{URI.encode_www_form(common.merge(amount: Money.input(message.spent), note: notes[:out]))}",
+      spend: "/spend/new?#{URI.encode_www_form(common.merge({ amount: Money.input(message.spent), note: notes[:out], payee: message.counterparty }.compact))}",
       move: "/move/new?#{URI.encode_www_form({ from: account&.id, inbox: message.id }.compact)}"
     }
   end
@@ -1057,6 +1243,12 @@ helpers do
     return if id.to_s.empty?
 
     InboxMessage.first(id: id.to_i, user_id: current_user.id, status: 'pending')&.update(status: 'recorded', transaction_id: txn.id)
+  end
+
+  # The inbox again after acting on a message, keeping its own back arrow.
+  def inbox_return(anchor = nil)
+    path = params[:back] ? with_back('/inbox', back_path('/')) : '/inbox'
+    anchor ? "#{path}##{anchor}" : path
   end
 
   def inbox_url(token)
@@ -1102,9 +1294,9 @@ end
 
 get '/inbox' do
   @title = 'SMS inbox'
-  @back = '/'
+  @back = back_path('/')
   messages = InboxMessage.where(user_id: current_user.id)
-  erb :inbox, locals: { pending: messages.pending.all, done: messages.done.limit(15).all }
+  erb :inbox, locals: { pending: messages.pending.all, done: messages.done.limit(15).all, bills: active_bills }
 end
 
 get '/inbox/setup' do
@@ -1128,17 +1320,18 @@ end
 
 post '/inbox/:id/record' do
   message = find_message!
-  redirect '/inbox' unless message.status == 'pending'
+  redirect inbox_return unless message.status == 'pending'
   as = %w[in out].include?(params[:as]) ? params[:as] : message.direction
   account = find_account(params[:account_id])
-  pot = find_pot(params[:pot_id])
+  bill = as == 'out' ? find_bill(params[:bill_id]) : nil
+  pot = bill ? current_user.pot('living') : find_pot(params[:pot_id])
   error = if as.nil? then 'Choose whether it was money in or money out.'
           elsif account.nil? then 'Choose the account.'
           elsif as == 'out' && pot.nil? then 'Choose the pot the spending came from.'
           end
   if error
     notice 'error', error
-    redirect "/inbox#m-#{message.id}"
+    redirect inbox_return("m-#{message.id}")
   end
 
   notes = message.notes
@@ -1147,30 +1340,32 @@ post '/inbox/:id/record' do
                         note: blank_to_nil(notes[:in]), external_ref: message.ref_id)
         else
           ledger.spend(amount: message.spent, pot: pot, account: account, on: message.occurred_on,
-                       note: blank_to_nil(notes[:out]), external_ref: message.ref_id)
+                       note: blank_to_nil(notes[:out]), external_ref: message.ref_id, payee: message.counterparty,
+                       bill: bill, bill_month: bill && plan.bill_month_for(bill, message.occurred_on))
         end
   message.update(status: 'recorded', transaction_id: txn.id)
   notice 'success', as == 'in' ? "Split #{cedis(message.amount)} across your pots." : "Saved #{cedis(message.spent)} from #{pot.name}."
-  redirect '/inbox'
+  redirect inbox_return
 end
 
 post '/inbox/:id/dismiss' do
   message = find_message!
   message.update(status: 'dismissed') if message.status == 'pending'
-  redirect '/inbox'
+  redirect inbox_return
 end
 
 post '/inbox/:id/restore' do
   message = find_message!
-  message.update(status: 'pending') if message.status == 'dismissed'
-  redirect '/inbox'
+  orphaned = message.status == 'recorded' && message.txn.nil?
+  message.update(status: 'pending', transaction_id: nil) if message.status == 'dismissed' || orphaned
+  redirect inbox_return
 end
 
 # --- Settings -----------------------------------------------------------------
 
 get '/settings' do
   @title = 'Settings'
-  @back = '/more'
+  @back = back_path('/more')
   erb :settings, locals: { balances: current_user.accounts.to_h { |a| [a.id, plan.account_balance(a)] } }
 end
 
@@ -1178,8 +1373,13 @@ post '/settings/plan' do
   user = current_user
   payday = params[:payday].to_s.strip
   target = params[:living_target].to_s.strip
-  user.set(payday: payday.empty? ? nil : payday.to_i, emergency_months: params[:emergency_months].to_i,
-           living_target: target.empty? ? nil : Money.parse(target), cooling_hours: params[:cooling_hours].to_i)
+  emergency_months = params[:emergency_months].to_s.empty? ? user.emergency_months : params[:emergency_months].to_i
+  cooling_hours = params[:cooling_hours].to_s.empty? ? user.cooling_hours : params[:cooling_hours].to_i
+  user.set(payday: payday.empty? ? nil : payday.to_i,
+           emergency_months: emergency_months,
+           living_target: target.empty? ? nil : Money.parse(target),
+           cooling_hours: cooling_hours,
+           show_money_quote: params.key?('show_money_quote') ? params[:show_money_quote] == '1' : user.show_money_quote)
   if !target.empty? && user.living_target.nil?
     notice 'error', 'Enter the living target like 3000 or 3,000.00, or leave it blank.'
   elsif user.valid?

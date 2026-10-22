@@ -1,7 +1,8 @@
 <div class="login">
   <img class="logo" src="<%= asset_path('/icon.svg') %>" alt="" width="64" height="64">
-  <h1 class="center" style="font-size: 26px">Ega</h1>
-  <p class="center muted" style="margin-bottom: 24px">Every cedi gets a job.</p>
+  <h1 class="center" style="font-size: 28px; margin-bottom: 6px">Ega</h1>
+  <p class="center muted" style="margin: 0 auto 20px; max-width: 32ch">Every cedi gets a job. See what is safe to spend, and keep your money on track.</p>
+
   <% if error %><div class="flash error" role="alert"><%= error %></div><% end %>
   <form method="post" action="/login" class="card">
     <div class="field">
@@ -14,5 +15,17 @@
     </div>
     <button class="btn block" type="submit">Log in</button>
   </form>
-  <p class="center small">New here? <a href="/signup">Create an account</a></p>
+
+  <div class="card welcome-card" style="margin-top: 12px">
+    <div class="welcome-kicker">Get started</div>
+    <p class="welcome-copy">Set up your pots, track day-to-day spending, and build up your goals without the stress.</p>
+    <a class="btn ghost block" href="/signup">Create an account</a>
+  </div>
+
+  <% if quote %>
+    <div class="card quote-card" style="margin-top: 12px">
+      <div class="quote-label">Money quote</div>
+      <blockquote class="quote-text">“<%= quote %>”</blockquote>
+    </div>
+  <% end %>
 </div>

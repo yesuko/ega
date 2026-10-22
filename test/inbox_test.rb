@@ -106,6 +106,21 @@ class InboxTest < Minitest::Test
     assert_equal ['recorded', 2_500], [message.refresh.status, Transaction[message.transaction_id].amount]
   end
 
+  def test_deleting_the_saved_entry_puts_the_sms_back
+    user = user_with_inbox
+    forward(user, RECEIVED)
+    message = InboxMessage.first
+    post "/inbox/#{message.id}/record", as: 'in', account_id: user.accounts.find { |a| a.name == 'MoMo' }.id
+    get "/transactions/#{message.refresh.transaction_id}"
+    assert_includes last_response.body, 'goes back there'
+
+    post "/transactions/#{message.transaction_id}/delete"
+    assert_equal ['pending', nil], [message.refresh.status, message.transaction_id]
+    assert_equal 0, Plan.new(user).total
+    post "/inbox/#{message.id}/record", as: 'in', account_id: user.accounts.find { |a| a.name == 'MoMo' }.id
+    assert_equal 'recorded', message.refresh.status
+  end
+
   def test_dismiss_and_put_back
     user = user_with_inbox
     forward(user, RECEIVED)

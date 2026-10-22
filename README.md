@@ -28,8 +28,23 @@ holds what is invested.
   share goes to Future Me instead.
 - **Suggested moves** on the home screen show money sitting in the wrong account
   (e.g. Future Me's share still in MoMo). "Done, I moved it" records the transfer.
-- **Safe to spend today** is the Enjoy pot spread over the days to the next
-  payday (or the end of the month when income is irregular).
+- **Safe to spend today** (the green card on the home screen) is today's share
+  of two pots, spread over the days to the next payday (or the end of the month
+  when income is irregular): Enjoy, and Living for food, transport and data.
+  Living's share leaves out what its **bills** need. The bar shortens with each
+  spend. A daily money quote shows under it (it can be turned off in Settings).
+- **Bills** (rent, ECG, school fees, an allowance...) repeat every month, every
+  term (4 months), every year or just once. Monthly ones and
+  any due before the next income are kept back in full; bigger ones further off
+  get a share of each income until their pay-by date, so the money is there in
+  time. The Bills page warns when the bills need more a month than Living gets.
+  Marking a Living spend as a bill marks it paid (a term or yearly bill then
+  moves to its next date); bill payments don't count against the day's figure.
+- **Pots for payees**: spends remember who was paid, and the next payment to
+  the same payee suggests the same pot. Money out defaults to Living, and an
+  entry's page has **Wrong pot?** to move a spend to another pot.
+- **Starting balances** (`/setup`) shows what was saved; saving again replaces
+  them rather than adding, so a second tap never counts money twice.
 - **Check a balance**: enter what the bank or MoMo app shows and the gap is
   recorded, so small Living costs don't all need logging.
 - **Buy List**: new wants wait 48 hours (configurable) before joining the list;

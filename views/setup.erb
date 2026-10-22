@@ -1,6 +1,10 @@
 <form method="post" action="/setup">
   <%== erb :_error, layout: false, locals: { error: error } %>
-  <p class="muted small" style="margin: 0 4px 14px">What you have today, and which pot each part belongs to. Savings usually go to Future Me, everyday money to Living. Leave the rest blank. You can do this again later if you missed something.</p>
+  <% if saved %>
+    <p class="muted small" style="margin: 0 4px 14px">The starting balances you saved. Change any of them and save again: they're replaced, not added to.</p>
+  <% else %>
+    <p class="muted small" style="margin: 0 4px 14px">What you have today, and which pot each part belongs to. Savings usually go to Future Me, everyday money to Living. Leave the rest blank. You can come back and change them later.</p>
+  <% end %>
 
   <% current_user.cash_accounts.each do |account| %>
     <div class="card">

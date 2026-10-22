@@ -16,6 +16,7 @@
     <option value="">Everything</option>
     <% Transaction::KINDS.each do |key, label| %><option value="<%= key %>" <%= 'selected' if kind == key %>><%= label %></option><% end %>
   </select>
+  <%== erb :_back_field, layout: false %>
   <noscript><button class="btn small" type="submit">Show</button></noscript>
 </form>
 

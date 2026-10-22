@@ -1,11 +1,12 @@
 <div class="card tight rows">
   <% [['/inbox', :message, 'SMS inbox', 'Money SMS forwarded from your phone'],
       ['/activity', :list, 'Activity', 'Everything recorded, month by month'],
+      ['/bills', :receipt, 'Bills', 'Rent, electricity and other monthly bills'],
       ['/review', :bar_chart, 'Monthly review', 'Where the money went, and how much you saved'],
       ['/learn', :book_open, 'Investing in Ghana', 'What makes sense, and the red flags'],
-      ['/setup', :flag, 'Starting balances', 'Add money you had before using the app'],
+      ['/setup', :flag, 'Starting balances', 'What you had before using the app'],
       ['/settings', :settings, 'Settings', 'Pots and shares, accounts, payday, password']].each do |href, icon_name, title, sub| %>
-    <a class="row" href="<%= href %>">
+    <a class="row" href="<%= with_back(href, '/more') %>">
       <span class="badge sm"><%== icon(icon_name, size: 17) %></span>
       <div class="grow"><div class="title"><%= title %></div><div class="sub"><%= sub %></div></div>
       <%== icon(:chevron_right, size: 18, css_class: 'muted') %>
